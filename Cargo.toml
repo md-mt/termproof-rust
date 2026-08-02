@@ -42,4 +42,4 @@ all = "warn"
 # Shared dependency pins. Crates opt in via `foo.workspace = true`.
 # No dependency may be added without a documented reason in engineering-baseline.md.
 [workspace.dependencies]
-termproof-core = { path = "crates/termproof-core" }
+termproof-core = { path = "crates/termproof-core", version = "0.1.0" }

@@ -91,12 +91,15 @@ specification wins and this document is updated.
   maintained Serde YAML implementation, schemars, jsonschema, portable-pty,
   vt100, quick-junit, and a corpus-selected regex engine).
 - Dependencies are declared once in `[workspace.dependencies]` and referenced
-  with `.workspace = true` so versions stay uniform across crates.
+  with `.workspace = true` so versions stay uniform across crates. Every
+  workspace dependency pins an exact version (e.g. `version = "0.1.0"`), never
+  `"*"`, so cargo-deny's `wildcards = "deny"` policy (rust/deny.toml) has no
+  false positives and genuine wildcard requirements fail the gate.
 - The dependency/feature graph is kept minimal: default features are enabled
   only when needed, and optional heavy dependencies (ffmpeg/agg adapters,
   Docker) are behind features or adapter traits, never hard required.
-- Dependency/license/advisory checks are part of the CI gate (RUST-003) with
-  documented exceptions; the baseline intentionally has zero external
+- Dependency/license/advisory/source checks are part of the CI gate (RUST-003)
+  with documented exceptions; the baseline intentionally has zero external
   dependencies.
 
 ## 7. Feature policy

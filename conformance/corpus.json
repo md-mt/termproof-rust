@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "note": "M0 cross-runtime conformance corpus (spec 6.1, RUST-003). Every case is executed through the explicit Python-oracle adapter (uv run python -m termproof) and the explicit Rust-side adapter (the compiled termproof binary). Each case declares the SEMANTIC contract both runtimes must satisfy; the gate produces a machine-readable difference report and fails on drift. Scope guard: the RUST-002 skeleton only implements the M0 greeting contract, so at M0 the corpus covers the shared invocation surface (help for every public subcommand) where Python and Rust are required to agree. CLI parity cases land with RUST-015/M2.",
+  "cases": [
+    {
+      "id": "help-root",
+      "argv": ["--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "Root help: both runtimes must succeed and identify the program on stdout with empty stderr."
+    },
+    {
+      "id": "help-short",
+      "argv": ["-h"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "Short help flag: same contract as --help."
+    },
+    {
+      "id": "help-run",
+      "argv": ["run", "--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "run subcommand help: both runtimes must succeed and emit program identity."
+    },
+    {
+      "id": "help-list",
+      "argv": ["list", "--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "list subcommand help."
+    },
+    {
+      "id": "help-validate",
+      "argv": ["validate", "--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "validate subcommand help."
+    },
+    {
+      "id": "help-plugins",
+      "argv": ["plugins", "--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "plugins subcommand help."
+    },
+    {
+      "id": "help-init",
+      "argv": ["init", "--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "init subcommand help."
+    },
+    {
+      "id": "help-demo",
+      "argv": ["demo", "--help"],
+      "semantic": {
+        "exit_code": 0,
+        "stdout_nonempty": true,
+        "stderr_empty": true,
+        "stdout_contains": ["termproof"]
+      },
+      "note": "demo subcommand help."
+    }
+  ]
+}

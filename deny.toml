@@ -1,15 +1,26 @@
 # cargo-deny policy for the TermProof Rust workspace (RUST-003, issue #96).
 #
+# STRICT policy — no warn-through. Every configured category is enforced:
+#   - licenses, advisories, bans, and sources are all run by CI
+#     (`cargo deny check licenses advisories bans sources`).
+#   - `wildcards = "deny"`: any `version = "*"` (or workspace reference that
+#     resolves to a wildcard) fails the gate. Workspace members are declared
+#     with an exact `version = "0.1.0"` in [workspace.dependencies], so
+#     `termproof-core.workspace = true` is pinned, not a wildcard.
+#   - `all-features = true`: the whole dependency graph is analyzed, not just
+#     default features.
+#   - unresolved-workspace-dependency and other graph errors fail the gate
+#     instead of warning through.
+#
 # The workspace intentionally has ZERO external dependencies at the RUST-002
 # baseline (rust/Cargo.lock contains only the five workspace crates), so the
-# license, advisory, and ban checks below are vacuously green today. They exist
-# to fail loudly the moment a dependency is added without policy approval.
+# checks are vacuously green today. They exist to fail loudly the moment a
+# dependency is added without policy approval.
 #
 # Documented exceptions (RUST-003):
 #   - License allowlist is MIT only. All workspace crates declare
 #     `license = "MIT"` via [workspace.package]. A new dependency must be
-#     MIT/Apache-2.0/MIT-compatible; anything else requires a reviewed
-#     exception recorded here before it can land.
+#     MIT (or a later reviewed MIT-compatible allowance recorded here).
 #   - Dependency additions are governed by rust/docs/engineering-baseline.md
 #     section 6 (documented reason in the issue, declared once in
 #     [workspace.dependencies], minimal feature graph).
@@ -24,7 +35,7 @@
 #     workspace require a reviewed exception recorded here.
 
 [graph]
-all-features = false
+all-features = true
 no-default-features = false
 
 [advisories]
@@ -48,15 +59,12 @@ ignore = true
 # Duplicate versions are a drift hazard; the workspace pins one version of
 # every dependency in [workspace.dependencies].
 multiple-versions = "deny"
-# Workspace members are referenced with `foo.workspace = true` (the RUST-002
-# engineering-baseline pattern: every dependency declared once in
-# [workspace.dependencies], which pins an exact version). cargo-deny treats
-# these workspace references as wildcards, so the lint is set to "warn":
-# genuine `version = "*"` requirements on external crates still surface in
-# CI output while intentional workspace references do not fail the gate.
-# See rust/docs/engineering-baseline.md section 6.
-wildcards = "warn"
-allow-workspace = true
+# Wildcards are DENIED, not warned. Workspace members are pinned with an
+# exact version in [workspace.dependencies] (see rust/docs/engineering-
+# baseline.md section 6), so `foo.workspace = true` resolves to a pinned
+# version and never triggers this lint. A genuine `version = "*"` fails.
+wildcards = "deny"
+allow-workspace = false
 skip = []
 skip-tree = []
 

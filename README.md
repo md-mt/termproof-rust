@@ -31,6 +31,18 @@ cargo fmt --check --all
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 cargo doc --workspace --no-deps
+cargo deny check licenses advisories bans sources
+
+# Gate scripts (from the repository root):
+uv run python -m unittest discover -s rust/scripts/tests -v
+uv run python rust/scripts/check_schema_drift.py --canonical docs/recipe-schema-v1.json --rust-root rust
+uv run python rust/scripts/check_conformance.py \
+  --corpus rust/conformance/corpus.json \
+  --binary rust/target/debug/termproof \
+  --oracle "uv run python -m termproof"
+cargo llvm-cov --workspace --json --output-path /tmp/cov.json
+python3 rust/scripts/check_coverage_regression.py \
+  --baseline rust/coverage/baseline.json --current /tmp/cov.json
 ```
 
 ## Status
