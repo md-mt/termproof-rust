@@ -142,7 +142,11 @@ def main(argv: list[str] | None = None) -> None:
                 "version": (current.get("cargo_llvm_cov") or {}).get("version", "unknown"),
             },
             "generated_at": "",
-            "note": "Committed M0 coverage baseline. check_coverage_regression.py fails on any drop below these exact covered/count values or line percent. Regenerate deliberately with --generate when coverage intentionally increases.",
+            "note": (
+                "Committed M0 coverage baseline. check_coverage_regression.py fails on any "
+                "drop below these exact covered/count values or line percent. Regenerate "
+                "deliberately with --generate when coverage intentionally increases."
+            ),
             "workspace": {"lines": lines},
             "crates": {name: {"lines": c} for name, c in crates.items()},
         }

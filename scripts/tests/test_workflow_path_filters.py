@@ -6,8 +6,6 @@ gate that consumes it. The schema-drift gate reads
 docs/recipe-schema-v1.json; a schema-only PR must run Rust CI.
 """
 
-import subprocess
-import sys
 import unittest
 from pathlib import Path
 

@@ -62,7 +62,7 @@ import json
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -146,7 +146,6 @@ def evaluate_semantic(
     """
     problems: list[str] = []
     for runtime, obs in (("python", python), ("rust", rust)):
-        label = f"{runtime} (exit {obs.exit_code})"
         if "exit_code" in semantic and obs.exit_code != semantic["exit_code"]:
             problems.append(
                 f"{runtime}: exit code {obs.exit_code} != required {semantic['exit_code']}"
