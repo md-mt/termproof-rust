@@ -2,9 +2,11 @@
 //! orchestration.
 //!
 //! This crate is the shared foundation for the Rust reimplementation. During
-//! the RUST-002 baseline it only carries the canonical identity constants so
-//! downstream crates (starting with `termproof-cli`) have a single source of
-//! truth for the product name and version.
+//! the RUST-002 baseline it only carried the canonical identity constants; as
+//! of RUST-007 it also owns `StepResult` and the seven built-in steps.
+
+pub mod models;
+pub mod steps;
 
 /// Canonical product name used by the CLI and diagnostics.
 pub const NAME: &str = "termproof";

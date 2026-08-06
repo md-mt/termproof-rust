@@ -9,7 +9,11 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[dependencies]
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+termproof-terminal.workspace = true
+
 [lints]
 workspace = true
-
-[dependencies]

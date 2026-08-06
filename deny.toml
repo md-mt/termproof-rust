@@ -44,6 +44,16 @@ ignore = []
 [licenses]
 allow = [
     "MIT",
+    # RUST-007: regex engine selected from corpus evidence (spec §5.3). The
+    # `regex` crate and its transitive dependencies `regex-syntax` and
+    # `regex-automata` are dual MIT/Apache-2.0; `aho-corasick` is Unlicense/MIT;
+    # `memchr` is Unlicense/MIT. All are MIT-compatible per spec §6 review.
+    "Apache-2.0",
+    "Unlicense",
+    # `unicode-ident` (transitive via proc-macro2/syn/serde_derive) is
+    # `(MIT OR Apache-2.0) AND Unicode-3.0` — Unicode-3.0 is a permissive data
+    # license for the Unicode tables, reviewed as compatible.
+    "Unicode-3.0",
 ]
 confidence-threshold = 0.8
 exceptions = [

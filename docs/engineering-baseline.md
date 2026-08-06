@@ -99,8 +99,13 @@ specification wins and this document is updated.
   only when needed, and optional heavy dependencies (ffmpeg/agg adapters,
   Docker) are behind features or adapter traits, never hard required.
 - Dependency/license/advisory/source checks are part of the CI gate (RUST-003)
-  with documented exceptions; the baseline intentionally has zero external
-  dependencies.
+  with documented exceptions; new dependencies added in RUST-007 are
+  `regex` 1.13.1 (corpus-selected engine per spec section 5.3, declared as
+  `default-features = false` with explicit `std`+`unicode` features), `serde`
+  1.0.219 and `serde_json` 1.0.143 (spec section 5.3 typed-model dependencies).
+  License allowances for `Apache-2.0`, `Unlicense`, and `Unicode-3.0`
+  (transitive via proc-macro2/syn/serde_derive) are recorded in
+  `rust/deny.toml` and reviewed as MIT-compatible.
 
 ## 7. Feature policy
 

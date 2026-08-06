@@ -4,13 +4,13 @@
     "name": "cargo-llvm-cov",
     "version": "0.8.7"
   },
-  "generated_at": "2026-08-02T10:57:33.035656+00:00",
+  "generated_at": "",
   "note": "Committed M0 coverage baseline. check_coverage_regression.py fails on any drop below these exact covered/count values or line percent. Regenerate deliberately with --generate when coverage intentionally increases.",
   "workspace": {
     "lines": {
-      "count": 6,
-      "covered": 6,
-      "percent": 100
+      "count": 677,
+      "covered": 509,
+      "percent": 75.18463810930577
     }
   },
   "crates": {
@@ -23,9 +23,16 @@
     },
     "termproof-core": {
       "lines": {
-        "count": 3,
-        "covered": 3,
-        "percent": 100.0
+        "count": 508,
+        "covered": 381,
+        "percent": 75.0
+      }
+    },
+    "termproof-terminal": {
+      "lines": {
+        "count": 166,
+        "covered": 125,
+        "percent": 75.3
       }
     }
   }
