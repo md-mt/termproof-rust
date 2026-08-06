@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::models::{AssertionResult, Recipe, StepResult};
+use crate::models;
+use crate::result::{AssertionResult, StepResult};
 
 /// Result type for execution modes.
 pub type ExecutionResult = (
@@ -67,17 +68,24 @@ pub trait ExecutionContext: Send {
     /// Evaluate a single assertion.
     fn evaluate_assertion(
         &self,
-        recipe: &Recipe,
+        recipe: &models::Recipe,
         assertion: &Value,
         screen: &str,
         raw_output: &str,
         exit_code: Option<i32>,
-    ) -> AssertionResult;
+    ) -> AssertionResult {
+        // Default implementation delegates to the built-in assertion registry
+        // so that non-Runner ExecutionContext fakes and the plugin host both
+        // share the same semantics. Assertions operate on **immutable run
+        // snapshots** (`screen`, `raw_output`, `exit_code`) — callers must not
+        // pass a mutable session stream. See `crate::assertions::evaluate`.
+        crate::assertions::evaluate(recipe, assertion, screen, raw_output, exit_code)
+    }
 
     /// Evaluate all assertions (including implicit `expect_exit_code`).
     fn evaluate_assertions(
         &self,
-        recipe: &Recipe,
+        recipe: &models::Recipe,
         screen: &str,
         raw_output: &str,
         exit_code: Option<i32>,
@@ -92,7 +100,7 @@ pub trait ExecutionContext: Send {
     }
 
     /// Return the recipe's timeout as Duration.
-    fn recipe_timeout(&self, recipe: &Recipe) -> Duration {
+    fn recipe_timeout(&self, recipe: &models::Recipe) -> Duration {
         Duration::from_secs_f64(recipe.timeout_seconds)
     }
 }
@@ -110,7 +118,7 @@ pub trait ExecutionMode: Send + Sync {
     fn execute(
         &self,
         ctx: &mut dyn ExecutionContext,
-        recipe: &Recipe,
+        recipe: &models::Recipe,
         run_dir: &Path,
     ) -> Result<ExecutionResult, ExecutionError>;
 }
@@ -129,7 +137,7 @@ impl ExecutionMode for ScriptedPtyMode {
     fn execute(
         &self,
         ctx: &mut dyn ExecutionContext,
-        recipe: &Recipe,
+        recipe: &models::Recipe,
         run_dir: &Path,
     ) -> Result<ExecutionResult, ExecutionError> {
         let cast_path = run_dir.join("session.cast");
@@ -179,7 +187,7 @@ impl ExecutionMode for ScriptedProcessMode {
     fn execute(
         &self,
         ctx: &mut dyn ExecutionContext,
-        recipe: &Recipe,
+        recipe: &models::Recipe,
         run_dir: &Path,
     ) -> Result<ExecutionResult, ExecutionError> {
         let cast_path = run_dir.join("session.cast");
@@ -226,7 +234,7 @@ impl ExecutionMode for AgentDrivenMode {
     fn execute(
         &self,
         ctx: &mut dyn ExecutionContext,
-        recipe: &Recipe,
+        recipe: &models::Recipe,
         run_dir: &Path,
     ) -> Result<ExecutionResult, ExecutionError> {
         let cast_path = run_dir.join("session.cast");
