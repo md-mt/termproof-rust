@@ -1,12 +1,21 @@
 //! PTY sessions and terminal state (RUST-006).
 //!
 //! `PtySession` owns a child process, a `TerminalScreen`, a `CastRecorder`,
-//! and an `ActivityClock`. The intended platform layer is `portable-pty`
-//! (see `Cargo.toml` comment). This offline stub uses `std::process`
-//! with piped I/O to preserve the same public API so the crate builds and
-//! tests pass without a registry fetch. Swapping in `portable-pty` is a
-//! one-line `CommandBuilder` change in `spawn()` and a `MasterPty::resize`
-//! call in `resize()`.
+//! and an `ActivityClock`. The platform layer is `portable-pty`, so the child
+//! runs on a real pseudo-terminal with a controlling tty.
+//!
+//! That distinction is not cosmetic. A child on a pipe fails `isatty`, so
+//! programs that gate interactive behaviour on it never enter the mode under
+//! test — a terminal-verification tool that drives its subject through pipes
+//! is not exercising the thing it claims to verify.
+//!
+//! Two consequences of a real tty are visible in this API:
+//!
+//! - **One stream.** A terminal has a single output stream; stdout and stderr
+//!   arrive interleaved on the master and cannot be told apart.
+//! - **Input is echoed.** In canonical mode the tty driver echoes what is
+//!   written to it, so text sent with `send_line` appears on the screen once
+//!   from the echo and again from whatever the child prints.
 //!
 //! Merge dependency: RUST-004 provides the typed `Recipe` / `CommandSpec`
 //! and `SessionBackend` trait. `PtyConfig` scaffolds against the expected
@@ -15,13 +24,22 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+
 use crate::cast::{ActivityClock, CastRecorder};
 use crate::screen::TerminalScreen;
+
+/// EOT — what a terminal sends for "end of input"; closing a fd is a pipe
+/// concept and means nothing to a tty.
+const EOT: u8 = 0x04;
+
+/// How long `close` waits for the child to die and for the reader thread to
+/// notice, before giving up and detaching rather than blocking `Drop`.
+const CLOSE_GRACE: Duration = Duration::from_millis(500);
 
 /// Key names that `press` understands (subset of `termproof/session.py::KEYS`).
 const KEY_MAP: &[(&str, &str)] = &[
@@ -110,12 +128,11 @@ impl std::fmt::Display for PtyError {
 
 impl std::error::Error for PtyError {}
 
-/// PTY-backed terminal session (offline stub using `std::process`).
+/// PTY-backed terminal session.
 ///
-/// The stub spawns the child with piped stdout/stderr/stdin, drains output
-/// on a background thread into `TerminalScreen` and `CastRecorder`, and
-/// presents the same `wait_for_text` / `wait_for_idle` / `resize` surface as
-/// the real `portable-pty` implementation. `Drop` guarantees termination.
+/// Spawns the child onto a pseudo-terminal, drains the master on a background
+/// thread into `TerminalScreen` and `CastRecorder`, and exposes
+/// `wait_for_text` / `wait_for_idle` / `resize`. `Drop` terminates the child.
 pub struct PtySession {
     config: PtyConfig,
     cols: u16,
@@ -124,11 +141,12 @@ pub struct PtySession {
     screen: Arc<Mutex<TerminalScreen>>,
     activity: Arc<Mutex<ActivityClock>>,
     cast: Option<Arc<Mutex<CastRecorder>>>,
-    stdin: Option<ChildStdin>,
-    child: Option<Child>,
-    stdout_handle: Option<JoinHandle<()>>,
-    stderr_handle: Option<JoinHandle<()>>,
+    master: Option<Box<dyn MasterPty + Send>>,
+    writer: Option<Box<dyn Write + Send>>,
+    child: Option<Box<dyn Child + Send + Sync>>,
+    reader_handle: Option<JoinHandle<()>>,
     exit_code: Option<i32>,
+    exit_signal: Option<String>,
 }
 
 impl std::fmt::Debug for PtySession {
@@ -160,11 +178,12 @@ impl PtySession {
             screen: Arc::new(Mutex::new(screen)),
             activity: Arc::new(Mutex::new(ActivityClock::new())),
             cast: None,
-            stdin: None,
+            master: None,
+            writer: None,
             child: None,
-            stdout_handle: None,
-            stderr_handle: None,
+            reader_handle: None,
             exit_code: None,
+            exit_signal: None,
         })
     }
 
@@ -200,12 +219,19 @@ impl PtySession {
             }
         }
 
-        let mut cmd = Command::new(&self.config.argv[0]);
-        if self.config.argv.len() > 1 {
-            cmd.args(&self.config.argv[1..]);
-        }
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: self.rows,
+                cols: self.cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| PtyError::SpawnFailed(e.to_string()))?;
+
+        let mut cmd = CommandBuilder::new(&self.config.argv[0]);
+        cmd.args(&self.config.argv[1..]);
         if let Some(cwd) = &self.config.cwd {
-            cmd.current_dir(cwd);
+            cmd.cwd(cwd);
         }
         for (k, v) in &self.config.env {
             cmd.env(k, v);
@@ -215,87 +241,62 @@ impl PtySession {
         {
             cmd.env("TERM", "xterm-256color");
         }
-        cmd.stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
+        let child = pair
+            .slave
+            .spawn_command(cmd)
             .map_err(|e| PtyError::SpawnFailed(e.to_string()))?;
-        let stdin = child.stdin.take();
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
+        // Drop our slave handle immediately. While this process still holds a
+        // slave fd open, reads on the master never see EOF, so the reader
+        // thread would outlive the child and `close` would block forever.
+        drop(pair.slave);
+
+        let reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| PtyError::Io(e.to_string()))?;
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| PtyError::Io(e.to_string()))?;
 
         let raw_out = Arc::clone(&self.raw_output);
         let screen_out = Arc::clone(&self.screen);
         let activity_out = Arc::clone(&self.activity);
         let cast_out = self.cast.clone();
-        let stdout_handle = stdout.map(|mut out| {
-            thread::spawn(move || {
-                let mut buf = [0u8; 4096];
-                loop {
-                    match out.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            let chunk = &buf[..n];
-                            if let Ok(mut r) = raw_out.lock() {
-                                r.extend_from_slice(chunk);
-                            }
-                            if let Ok(mut s) = screen_out.lock() {
-                                s.feed_bytes(chunk);
-                            }
-                            if let Ok(mut a) = activity_out.lock() {
-                                a.mark();
-                            }
-                            if let Some(c) = cast_out.as_ref() {
-                                if let Ok(mut rec) = c.lock() {
-                                    rec.record_output(&String::from_utf8_lossy(chunk));
-                                }
+        let reader_handle = thread::spawn(move || {
+            let mut reader = reader;
+            let mut buf = [0u8; 4096];
+            loop {
+                // A pty master reports the child's exit as EIO rather than a
+                // clean EOF, so any error ends the drain just as `Ok(0)` does.
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let chunk = &buf[..n];
+                        if let Ok(mut r) = raw_out.lock() {
+                            r.extend_from_slice(chunk);
+                        }
+                        if let Ok(mut s) = screen_out.lock() {
+                            s.feed_bytes(chunk);
+                        }
+                        if let Ok(mut a) = activity_out.lock() {
+                            a.mark();
+                        }
+                        if let Some(c) = cast_out.as_ref() {
+                            if let Ok(mut rec) = c.lock() {
+                                rec.record_output(&String::from_utf8_lossy(chunk));
                             }
                         }
-                        Err(_) => break,
                     }
                 }
-            })
+            }
         });
 
-        let raw_err = Arc::clone(&self.raw_output);
-        let screen_err = Arc::clone(&self.screen);
-        let activity_err = Arc::clone(&self.activity);
-        let cast_err = self.cast.clone();
-        let stderr_handle = stderr.map(|mut err| {
-            thread::spawn(move || {
-                let mut buf = [0u8; 4096];
-                loop {
-                    match err.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            let chunk = &buf[..n];
-                            if let Ok(mut r) = raw_err.lock() {
-                                r.extend_from_slice(chunk);
-                            }
-                            if let Ok(mut s) = screen_err.lock() {
-                                s.feed_bytes(chunk);
-                            }
-                            if let Ok(mut a) = activity_err.lock() {
-                                a.mark();
-                            }
-                            if let Some(c) = cast_err.as_ref() {
-                                if let Ok(mut rec) = c.lock() {
-                                    rec.record_output(&String::from_utf8_lossy(chunk));
-                                }
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-            })
-        });
-
-        self.stdin = stdin;
+        self.writer = Some(writer);
+        self.master = Some(pair.master);
         self.child = Some(child);
-        self.stdout_handle = stdout_handle;
-        self.stderr_handle = stderr_handle;
+        self.reader_handle = Some(reader_handle);
         Ok(())
     }
 
@@ -327,41 +328,45 @@ impl PtySession {
         self.exit_code
     }
 
+    /// Name of the signal that killed the child, if it was signalled.
+    ///
+    /// `portable-pty` surfaces the signal by name rather than by number, so
+    /// this is reported separately instead of being folded into `exit_code`.
+    pub fn exit_signal(&self) -> Option<&str> {
+        self.exit_signal.as_deref()
+    }
+
+    /// Process id of the child, if it has been spawned.
+    pub fn process_id(&self) -> Option<u32> {
+        self.child.as_ref().and_then(|c| c.process_id())
+    }
+
     /// Whether the child is still alive.
     pub fn is_alive(&mut self) -> bool {
-        if let Some(child) = self.child.as_mut() {
-            match child.try_wait() {
-                Ok(None) => true,
-                Ok(Some(status)) => {
-                    if self.exit_code.is_none() {
-                        self.exit_code = status.code().or_else(|| {
-                            #[cfg(unix)]
-                            {
-                                use std::os::unix::process::ExitStatusExt;
-                                status.signal().map(|s| 128 + s)
-                            }
-                            #[cfg(not(unix))]
-                            {
-                                None
-                            }
-                        });
-                    }
-                    false
+        let status = match self.child.as_mut() {
+            Some(child) => child.try_wait(),
+            None => return false,
+        };
+        match status {
+            Ok(None) => true,
+            Ok(Some(status)) => {
+                if self.exit_code.is_none() {
+                    self.exit_code = Some(i32::try_from(status.exit_code()).unwrap_or(-1));
+                    self.exit_signal = status.signal().map(str::to_string);
                 }
-                Err(_) => false,
+                false
             }
-        } else {
-            false
+            Err(_) => false,
         }
     }
 
-    /// Write bytes to stdin.
+    /// Write bytes to the terminal.
     pub fn send_bytes(&mut self, data: &[u8]) -> Result<(), PtyError> {
-        let stdin = self.stdin.as_mut().ok_or(PtyError::NotStarted)?;
-        stdin
+        let writer = self.writer.as_mut().ok_or(PtyError::NotStarted)?;
+        writer
             .write_all(data)
             .map_err(|e| PtyError::Io(e.to_string()))?;
-        stdin.flush().map_err(|e| PtyError::Io(e.to_string()))?;
+        writer.flush().map_err(|e| PtyError::Io(e.to_string()))?;
         if let Some(c) = self.cast.as_ref() {
             if let Ok(mut rec) = c.lock() {
                 rec.record_input(&String::from_utf8_lossy(data));
@@ -402,27 +407,49 @@ impl PtySession {
         Err(PtyError::UnknownKey(key.to_string()))
     }
 
-    /// Send EOF (close stdin).
+    /// Send EOF.
+    ///
+    /// On a tty this is the EOT character, not a closed file descriptor: the
+    /// line discipline turns EOT into an end-of-input for the reader. The
+    /// writer is then dropped, so no further input can be sent.
     pub fn send_eof(&mut self) -> Result<(), PtyError> {
-        self.stdin.take();
+        if self.writer.is_some() {
+            self.send_bytes(&[EOT])?;
+            self.writer.take();
+        }
         Ok(())
     }
 
-    /// Set echo (no-op; API symmetry).
+    /// Set echo.
+    ///
+    /// Not supported: `portable-pty` 0.9 can read the master's termios but
+    /// offers no way to set it, so the tty stays in its default canonical,
+    /// echoing mode. Kept as a no-op for API symmetry.
     pub fn set_echo(&mut self, _enabled: bool) -> Result<(), PtyError> {
         Ok(())
     }
 
     /// Resize the PTY and screen.
     ///
-    /// The real `portable-pty` path calls `MasterPty::resize`. The stub
-    /// replays the screen buffer so dimensions are tracked deterministically.
+    /// This updates the kernel's winsize for the tty, which is what makes the
+    /// child see the new dimensions (and receive `SIGWINCH`); the local screen
+    /// is resized to match.
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<(), PtyError> {
         if cols == 0 || rows == 0 {
             return Err(PtyError::SpawnFailed("cols and rows must be > 0".into()));
         }
         self.cols = cols;
         self.rows = rows;
+        if let Some(master) = self.master.as_ref() {
+            master
+                .resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .map_err(|e| PtyError::Io(e.to_string()))?;
+        }
         if let Ok(mut s) = self.screen.lock() {
             s.resize(cols, rows);
         }
@@ -510,30 +537,38 @@ impl PtySession {
         Ok(())
     }
 
-    /// Close the session, terminating the child if needed and joining threads.
+    /// Close the session, terminating the child if needed and joining the
+    /// reader thread.
+    ///
+    /// This runs from `Drop`, so it must not be able to block indefinitely.
+    /// A child that has forked a grandchild holding the slave open keeps the
+    /// master readable after the child itself is gone; rather than wait for a
+    /// read that may never return, the reader thread is detached once
+    /// `CLOSE_GRACE` elapses.
     pub fn close(&mut self) {
         if self.is_alive() {
             let _ = self.terminate();
-            thread::sleep(Duration::from_millis(50));
         }
-        if let Some(child) = self.child.as_mut() {
-            if let Ok(Some(status)) = child.try_wait() {
-                if self.exit_code.is_none() {
-                    self.exit_code = status.code();
-                }
+        let deadline = Instant::now() + CLOSE_GRACE;
+        while self.is_alive() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        // Release our handles so the reader's blocking read can unblock.
+        self.writer.take();
+        if let Some(handle) = self.reader_handle.take() {
+            let join_deadline = Instant::now() + CLOSE_GRACE;
+            while !handle.is_finished() && Instant::now() < join_deadline {
+                thread::sleep(Duration::from_millis(5));
             }
-            let deadline = Instant::now() + Duration::from_millis(200);
-            while self.is_alive() && Instant::now() < deadline {
-                thread::sleep(Duration::from_millis(10));
+            if handle.is_finished() {
+                let _ = handle.join();
             }
+            // Otherwise leave it detached rather than hang `Drop`.
         }
-        self.stdin.take();
-        if let Some(h) = self.stdout_handle.take() {
-            let _ = h.join();
-        }
-        if let Some(h) = self.stderr_handle.take() {
-            let _ = h.join();
-        }
+        self.master.take();
+        self.child.take();
+
         if let Some(c) = self.cast.take() {
             if let Ok(mut rec) = c.lock() {
                 let _ = rec.finish();
@@ -566,6 +601,7 @@ impl Drop for PtySession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::{Command, Stdio};
     use std::time::Duration;
 
     #[test]
@@ -647,6 +683,102 @@ mod tests {
         let err = sess.press("f13").unwrap_err();
         assert!(matches!(err, PtyError::UnknownKey(_)));
         sess.close();
+    }
+
+    /// A child on a pipe has no controlling tty, so `test -t` fails and
+    /// anything that gates interactive behaviour on `isatty` never runs.
+    #[test]
+    fn child_gets_a_controlling_tty() {
+        let config = PtyConfig::new(vec![
+            "sh".into(),
+            "-c".into(),
+            "test -t 0 && test -t 1 && echo HAS_TTY || echo NO_TTY".into(),
+        ]);
+        let mut sess = PtySession::new(config, 80, 24).expect("new");
+        sess.spawn().expect("spawn");
+        let found = sess
+            .wait_for_text("HAS_TTY", Duration::from_secs(5))
+            .expect("wait");
+        assert!(found, "child had no tty: {:?}", sess.raw_output_str());
+        sess.close();
+    }
+
+    /// The kernel must learn the new window size, not just our bookkeeping:
+    /// `stty size` reads it back from the tty itself.
+    #[test]
+    fn resize_reaches_the_kernel() {
+        let config = PtyConfig::new(vec![
+            "sh".into(),
+            "-c".into(),
+            "sleep 0.4; stty size".into(),
+        ]);
+        let mut sess = PtySession::new(config, 80, 24).expect("new");
+        sess.spawn().expect("spawn");
+        sess.resize(40, 10).expect("resize");
+        let found = sess
+            .wait_for_text("10 40", Duration::from_secs(5))
+            .expect("wait");
+        assert!(
+            found,
+            "child did not see the new size: {:?}",
+            sess.raw_output_str()
+        );
+        sess.close();
+    }
+
+    /// A terminal has one stream; stderr is not separable from stdout.
+    #[test]
+    fn stderr_is_merged_into_the_terminal_stream() {
+        let config = PtyConfig::new(vec![
+            "sh".into(),
+            "-c".into(),
+            "echo out; echo err 1>&2".into(),
+        ]);
+        let mut sess = PtySession::new(config, 80, 24).expect("new");
+        sess.spawn().expect("spawn");
+        assert!(sess
+            .wait_for_text("err", Duration::from_secs(5))
+            .expect("wait"));
+        sess.close();
+        let screen = sess.screen_text();
+        assert!(screen.contains("out"), "stdout missing: {screen:?}");
+        assert!(screen.contains("err"), "stderr missing: {screen:?}");
+    }
+
+    /// `Drop` must reap the child, and must not itself hang.
+    #[cfg(unix)]
+    #[test]
+    fn drop_terminates_the_child_promptly() {
+        let config = PtyConfig::new(vec![
+            "sh".into(),
+            "-c".into(),
+            "echo READY; sleep 30".into(),
+        ]);
+        let mut sess = PtySession::new(config, 80, 24).expect("new");
+        sess.spawn().expect("spawn");
+        assert!(sess
+            .wait_for_text("READY", Duration::from_secs(5))
+            .expect("wait"));
+        let pid = sess.process_id().expect("pid");
+
+        let start = Instant::now();
+        drop(sess);
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "Drop blocked for {elapsed:?}"
+        );
+
+        // Give the kernel a moment to reap, then confirm the pid is gone.
+        thread::sleep(Duration::from_millis(200));
+        let alive = Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(!alive, "child {pid} survived Drop");
     }
 
     #[test]
