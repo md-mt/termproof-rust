@@ -39,10 +39,27 @@ any behaviour.
 cargo test -p termproof-core --test differential_steps -- --nocapture
 ```
 
-The test prints every divergence and the agreement count, and fails if the count
-drops below the floor recorded in the test. It does **not** require full
-agreement, because a chunk of the corpus is currently blocked on a decision that
-is not the port's to make — see "Known residual" below.
+The test prints every divergence and two counts, and fails if either drops below
+the floor recorded in the test:
+
+| Count | Meaning | At the harness commit | Now |
+|---|---|---|---|
+| Full agreement | `name`, `passed` and `detail` all match | 26 / 115 | 82 / 115 |
+| Verdict agreement | `passed` matches, whatever `detail` says | not recorded | 113 / 115 |
+| Panicked | the port took the process down | 5 | 0 |
+| Never returned | the port wedged on a deadline it could not reach | 1 | 0 |
+
+The two counts are separate floors on purpose. A fix that corrects a verdict and
+leaves the wording to a later commit moves the second and not the first, so it
+still has to move a number; a wording-only fix moves the first alone.
+
+The panic and never-returned counts are asserted at zero rather than ratcheted.
+Recipe-controlled input taking the process down is not a divergence to be traded
+off against agreement — see `specs/002-builtin-steps/spec.md` FR-007.
+
+Full agreement is **not** required, because the remaining gap is one open
+decision that is not the port's to make plus two rows that belong to another
+layer — see "Known residual" below.
 
 ## What the corpus does and does not measure
 
@@ -76,7 +93,9 @@ knowable direction:
 
 ## Known residual
 
-A little over a fifth of the corpus embeds an error string owned by CPython or
+### Foreign error text — 30 cases, verdict agrees
+
+A little over a quarter of the corpus embeds an error string owned by CPython or
 by libc rather than by TermProof — `could not convert string to float: 'abc'`,
 `utf_8_encode() argument 1 must be str, not int`,
 `timestamp out of range for platform time_t`,
@@ -86,6 +105,22 @@ their releases, and inheriting a platform-sensitive one. That is a decision
 about what TermProof's diagnostics *are*, not a porting detail, and it is open
 as 001-OQ-001 / 002-OQ-002 / 003-OQ-010 — one decision, raised in three specs.
 
-Until it is made, these cases agree on `passed` and diverge on `detail`. The
-test reports the two counts separately so the residual is visible rather than
-buried.
+Until it is made, these cases agree on `passed` and diverge on `detail`: the
+port reaches the same verdict by the same route and says so in its own words.
+
+### Two `press` rows — verdict differs
+
+`press/ctrl-bracket` (`ctrl-[`) and `press/ctrl-unmapped` (`ctrl-1`) are the only
+rows where the two runtimes disagree on `passed`. The oracle accepts both — it
+derives the control byte arithmetically — and the port's key table refuses
+anything not named in it. That is `termproof-terminal`'s mapping rather than the
+step layer's (`specs/002-builtin-steps/spec.md` FR-016), and the shape the port
+should adopt is open as OQ-005, because `ctrl-1` produces a byte the oracle
+itself would not call meaningful.
+
+### One diagnostic the corpus says is missing
+
+`wait_for_idle` reports `no output observed from the session` when the session
+produced nothing at all, and `timed out waiting for idle` otherwise. The port
+emits the second for both. It is a real divergence, recorded here rather than
+fixed, and the heuristic behind it is OQ-004.
