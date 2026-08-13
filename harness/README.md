@@ -1,10 +1,19 @@
-# Differential harness — step semantics
+# Differential harness
 
-A cross-runtime differential harness for the seven built-in steps. It exists
-because the port claimed corpus parity several times over with green local
-gates, and a differential run against the Python implementation still found the
-two runtimes agreeing on a minority of cases. A number nobody can reproduce is
-not a measurement.
+Cross-runtime differential harnesses for the layers the port has to match. One
+per layer, each the same two-half shape:
+
+| Layer | Oracle | Port | Corpus |
+|---|---|---|---|
+| Steps | `probe_steps.py` | `tests/differential_steps.rs` | `corpus/cases.json` |
+| Assertions | `probe_assertions.py` | `tests/differential_assertions.rs` | `corpus/assertion_cases.json` |
+
+They exist because the port claimed corpus parity several times over with green
+local gates, and a differential run against the Python implementation still
+found the two runtimes agreeing on a minority of cases. A number nobody can
+reproduce is not a measurement.
+
+# Step semantics
 
 ## Shape
 
@@ -138,3 +147,63 @@ replayed them against a double.
 produced nothing at all, and `timed out waiting for idle` otherwise. The port
 emits the second for both. It is a real divergence, recorded here rather than
 fixed, and the heuristic behind it is OQ-004.
+
+# Assertion semantics
+
+A second corpus, same shape, for the eight built-in assertions
+(`specs/003-builtin-assertions/spec.md`).
+
+## Shape
+
+| Half | Where | What it does |
+|---|---|---|
+| Oracle | `probe_assertions.py` | Builds a real fixture tree, drives the Python assertions over `corpus/assertion_cases.json` and records each case's `name`, `passed` and `detail` into `corpus/assertions.expected.json`. |
+| Port | `crates/termproof-core/tests/differential_assertions.rs` | Builds the same fixture tree, replays the same cases through the Rust assertions and reports the agreement count. |
+
+## The corpus
+
+165 cases. Two kinds:
+
+- **`assertion`** (154) — one assertion evaluated on its own against a fixed
+  `screen`, `raw_output` and `exit_code`.
+- **`run`** (11) — a whole recipe's assertion list, transcribed from
+  `TermProofRunner.evaluate_assertions`, recording the evaluated list in order
+  plus the score and the overall verdict. This is what measures FR-019 ordering
+  and FR-022 scoring rather than assuming them.
+
+Coverage against the spec's success criteria: every row of FR-004, FR-008,
+FR-011, FR-016 and FR-020; every worked example in FR-016; all eight assertion
+types with at least one passing and one failing case each; all three FR-019
+ordering rows; all five FR-022 scoring shapes; fourteen `best_match` schemas
+that produce more than one error simultaneously; and Python-`repr` conformance
+over strings, dicts, lists, floats, bools and `None`.
+
+### Fixtures
+
+`fixtures` in the corpus is the file tree both halves build in a fresh temporary
+directory before running. `null` means a directory; `@hex:...` means those raw
+bytes, which is how a file that is not valid UTF-8 gets into a JSON corpus.
+
+There is deliberately **no `sub/` directory**. FR-011 requires
+`sub/../exists.txt` to resolve to a path that does *not* exist — both runtimes
+`stat` the joined path and the kernel resolves `..` against the real tree, so
+the row only measures what it claims to if `sub` is absent. `realsub/` is the
+paired positive case.
+
+`@FX` is the fixture root: substituted in before a case runs and substituted
+back out of the recorded detail, so an absolute path in `file_exists` or
+`schema file unreadable:` is comparable across machines. This is the
+`specs/OBSERVATION-LOG.md` §4 constraint, honoured rather than worked around.
+
+## Regenerating the expectations
+
+```sh
+cd /path/to/python/termproof
+TERMPROOF_PYTHON_REPO=$PWD uv run python \
+    /path/to/termproof-rust/harness/probe_assertions.py \
+    > /path/to/termproof-rust/harness/corpus/assertions.expected.json
+```
+
+Only regenerate deliberately: the file is the oracle's testimony, and quietly
+re-recording it turns a failing comparison into a passing one without changing
+any behaviour.
