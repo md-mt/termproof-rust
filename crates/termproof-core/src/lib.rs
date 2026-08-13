@@ -11,6 +11,7 @@ pub mod pyregex;
 pub mod pyrepr;
 pub mod recipe;
 pub mod result;
+pub mod runner;
 pub mod schema;
 pub mod steps;
 pub mod store;
@@ -44,6 +45,7 @@ pub use execution::{
     AgentDrivenMode, ExecutionContext, ExecutionError, ExecutionMode, ExecutionResult,
     ScriptedProcessMode, ScriptedPtyMode,
 };
+pub use runner::{LoadedRecipe, Runner};
 
 /// Canonical product name used by the CLI and diagnostics.
 pub const NAME: &str = "termproof";
