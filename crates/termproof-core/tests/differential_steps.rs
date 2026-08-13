@@ -33,11 +33,11 @@ use termproof_terminal::{InMemorySession, Session, SessionError};
 ///
 /// At the commit that introduced this file: 26 / 115, five panics and one case
 /// that never returned.
-const AGREEMENT_FLOOR: usize = 64;
+const AGREEMENT_FLOOR: usize = 82;
 /// Cases agreeing on pass/fail, whatever the detail says. A fix that corrects a
 /// verdict but leaves the wording to a later commit moves this and not the
 /// floor above, so it still has to move a number.
-const VERDICT_FLOOR: usize = 104;
+const VERDICT_FLOOR: usize = 113;
 
 /// Wall-clock budget per case. The slowest legitimate case in the corpus waits
 /// three seconds; anything past this is not waiting, it is stuck.

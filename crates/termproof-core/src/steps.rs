@@ -32,16 +32,28 @@ fn display_name(step: &JsonValue, index: usize, action: &str) -> String {
         .unwrap_or_else(|| format!("{index}:{action}"))
 }
 
-/// Extract a number field as `f64`, returning `Err(msg)` on type errors.
+/// Read a duration key the way Python's `float()` reads it.
+///
+/// FR-004: every duration-valued key is a `float()` coercion, so a JSON number,
+/// a numeric JSON string (`"0.05"`, and `"nan"` / `"inf"` — the only spellings
+/// of the non-finite values JSON can carry) and a boolean are all durations.
+/// Accepting only `JsonValue::Number` rejected recipes the oracle runs.
 ///
 /// FR-005: the wrong-type message renders the value as it was authored, so a
 /// string stays quoted and `null` reads as `None`.
-fn parse_number(field: &str, v: &JsonValue) -> Result<f64, String> {
+///
+/// One narrow gap: Python's `float()` also accepts the digit separators of a
+/// numeric literal, so `float("1_0")` is `10.0`. That is not reachable from a
+/// duration anyone writes on purpose, and matching it means reimplementing
+/// CPython's literal grammar.
+fn coerce_float(field: &str, v: &JsonValue) -> Result<f64, String> {
+    let rejected = || format!("{field} must be a number, got {}", repr_json(v));
     match v {
-        JsonValue::Number(n) => n
-            .as_f64()
-            .ok_or_else(|| format!("{field} must be a number, got {}", repr_json(v))),
-        _ => Err(format!("{field} must be a number, got {}", repr_json(v))),
+        JsonValue::Number(n) => n.as_f64().ok_or_else(rejected),
+        JsonValue::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
+        // `float()` strips surrounding whitespace before parsing.
+        JsonValue::String(text) => text.trim().parse::<f64>().map_err(|_| rejected()),
+        _ => Err(rejected()),
     }
 }
 
@@ -69,6 +81,20 @@ fn duration_from_secs(seconds: f64) -> Duration {
     }
 }
 
+/// The idle step's stable window, which has its own reading of the extremes.
+///
+/// FR-006: a negative, NaN or infinite `stable_seconds` makes the idle check
+/// succeed on its first iteration, so all three are a window of zero. The spec
+/// records this as an accident of the oracle's implementation rather than a
+/// decision, open as OQ-003 -- and as the contract until that is settled.
+fn stable_window_from_secs(seconds: f64) -> Duration {
+    if seconds.is_finite() {
+        duration_from_secs(seconds)
+    } else {
+        Duration::ZERO
+    }
+}
+
 /// `sleep` is the one duration that cannot be clamped: clamping it would hang
 /// the run for a century instead of reporting anything. The oracle's own sleep
 /// primitive rejects a value outside `time_t` range rather than sleeping
@@ -89,15 +115,18 @@ fn deadline_passed(deadline: Option<std::time::Instant>) -> bool {
     }
 }
 
-fn validate_timeout(raw: &JsonValue, field: &str) -> Result<Duration, String> {
-    let f = parse_number(field, raw)?;
+/// Range-check a timeout. FR-005: `wait_for_regex` is the only step that does
+/// this. The asymmetry has no recorded rationale and is open as OQ-001; it is
+/// the contract until that is decided, so it stays confined to one caller.
+fn validate_regex_timeout(raw: &JsonValue, field: &str) -> Result<f64, String> {
+    let f = coerce_float(field, raw)?;
     if !f.is_finite() {
         return Err(format!("{field} must be finite, got {}", repr_f64(f)));
     }
     if f <= 0.0 {
         return Err(format!("{field} must be > 0, got {}", repr_f64(f)));
     }
-    Ok(duration_from_secs(f))
+    Ok(f)
 }
 
 // ---- wait_for_text -------------------------------------------------------
@@ -116,10 +145,13 @@ pub fn wait_for_text<S: Session>(session: &mut S, step: &JsonValue, index: usize
             };
         }
     };
+    // FR-006: no range validation here. A NaN, zero or negative timeout is a
+    // deadline already past, which the wait loop reports as an ordinary
+    // timeout rather than as an error.
     let timeout = match step.get("timeout_seconds") {
         None => Duration::from_secs(10),
-        Some(v) => match validate_timeout(v, "timeout_seconds") {
-            Ok(d) => d,
+        Some(v) => match coerce_float("timeout_seconds", v) {
+            Ok(f) => duration_from_secs(f),
             Err(e) => {
                 return StepResult {
                     name,
@@ -159,10 +191,13 @@ pub fn wait_for_text<S: Session>(session: &mut S, step: &JsonValue, index: usize
 /// `wait_for_idle` — screen has been stable for `stable_seconds`.
 pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
     let name = display_name(step, index, "wait_for_idle");
-    let stable = match step.get("stable_seconds") {
-        None => Duration::from_millis(500),
-        Some(v) => match validate_idle_duration(v) {
-            Ok(d) => d,
+    // FR-006 again, on both keys. The detail renders the coerced float rather
+    // than the clamped `Duration`, because `-1.0`, `nan` and `inf` are all
+    // values a `Duration` cannot hold and all values the oracle prints.
+    let secs = match step.get("stable_seconds") {
+        None => 0.5,
+        Some(v) => match coerce_float("stable_seconds", v) {
+            Ok(f) => f,
             Err(e) => {
                 return StepResult {
                     name,
@@ -173,10 +208,11 @@ pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize
             }
         },
     };
+    let stable = stable_window_from_secs(secs);
     let timeout = match step.get("timeout_seconds") {
         None => Duration::from_secs(10),
-        Some(v) => match validate_timeout(v, "timeout_seconds") {
-            Ok(d) => d,
+        Some(v) => match coerce_float("timeout_seconds", v) {
+            Ok(f) => duration_from_secs(f),
             Err(e) => {
                 return StepResult {
                     name,
@@ -187,7 +223,6 @@ pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize
             }
         },
     };
-    let secs = stable.as_secs_f64();
     let passed = match session.wait_for_idle(stable, timeout) {
         Ok(v) => v,
         Err(e) => {
@@ -210,20 +245,6 @@ pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize
         detail,
         screen: session.screen().to_string(),
     }
-}
-
-fn validate_idle_duration(v: &JsonValue) -> Result<Duration, String> {
-    let f = parse_number("stable_seconds", v)?;
-    if !f.is_finite() {
-        return Err(format!(
-            "stable_seconds must be finite, got {}",
-            repr_f64(f)
-        ));
-    }
-    if f < 0.0 {
-        return Err(format!("stable_seconds must be >= 0, got {}", repr_f64(f)));
-    }
-    Ok(duration_from_secs(f))
 }
 
 // ---- send_text -----------------------------------------------------------
@@ -336,7 +357,7 @@ pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
     let name = display_name(step, index, "sleep");
     let seconds = match step.get("seconds") {
         None => 1.0,
-        Some(v) => match parse_number("seconds", v) {
+        Some(v) => match coerce_float("seconds", v) {
             Ok(f) => f,
             Err(e) => {
                 return StepResult {
@@ -425,10 +446,10 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
     };
 
     // -- validate timeout ---------------------------------------------------
-    let timeout = match step.get("timeout_seconds") {
-        None => Duration::from_secs(10),
-        Some(v) => match validate_timeout(v, "wait_for_regex timeout_seconds") {
-            Ok(d) => d,
+    let timeout_secs = match step.get("timeout_seconds") {
+        None => 10.0,
+        Some(v) => match validate_regex_timeout(v, "wait_for_regex timeout_seconds") {
+            Ok(f) => f,
             Err(e) => {
                 return StepResult {
                     name,
@@ -439,6 +460,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
             }
         },
     };
+    let timeout = duration_from_secs(timeout_secs);
 
     // -- poll loop (same cadence as wait_for_text: 50ms ticks) --------------
     let deadline = deadline_from(timeout);
@@ -469,7 +491,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
         detail: format!(
             "timed out waiting for regex {} after {}s",
             repr_str(&pattern_str),
-            repr_f64(timeout.as_secs_f64())
+            repr_f64(timeout_secs)
         ),
         screen: session.screen().to_string(),
     }
