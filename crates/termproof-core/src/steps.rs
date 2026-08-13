@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use serde_json::Value as JsonValue;
 
+use crate::pyrepr::{repr_f64, repr_json, repr_str, repr_tuple, type_name};
 use crate::result::StepResult;
 use termproof_terminal::Session;
 
@@ -32,12 +33,15 @@ fn display_name(step: &JsonValue, index: usize, action: &str) -> String {
 }
 
 /// Extract a number field as `f64`, returning `Err(msg)` on type errors.
+///
+/// FR-005: the wrong-type message renders the value as it was authored, so a
+/// string stays quoted and `null` reads as `None`.
 fn parse_number(field: &str, v: &JsonValue) -> Result<f64, String> {
     match v {
         JsonValue::Number(n) => n
             .as_f64()
-            .ok_or_else(|| format!("{field} must be a number, got {v}")),
-        _ => Err(format!("{field} must be a number, got {v}")),
+            .ok_or_else(|| format!("{field} must be a number, got {}", repr_json(v))),
+        _ => Err(format!("{field} must be a number, got {}", repr_json(v))),
     }
 }
 
@@ -88,10 +92,10 @@ fn deadline_passed(deadline: Option<std::time::Instant>) -> bool {
 fn validate_timeout(raw: &JsonValue, field: &str) -> Result<Duration, String> {
     let f = parse_number(field, raw)?;
     if !f.is_finite() {
-        return Err(format!("{field} must be finite, got {f}"));
+        return Err(format!("{field} must be finite, got {}", repr_f64(f)));
     }
     if f <= 0.0 {
-        return Err(format!("{field} must be > 0, got {f}"));
+        return Err(format!("{field} must be > 0, got {}", repr_f64(f)));
     }
     Ok(duration_from_secs(f))
 }
@@ -138,9 +142,9 @@ pub fn wait_for_text<S: Session>(session: &mut S, step: &JsonValue, index: usize
         }
     };
     let detail = if passed {
-        format!("found {text:?}")
+        format!("found {}", repr_str(&text))
     } else {
-        format!("timed out waiting for {text:?}")
+        format!("timed out waiting for {}", repr_str(&text))
     };
     StepResult {
         name,
@@ -196,7 +200,7 @@ pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize
         }
     };
     let detail = if passed {
-        format!("stable for {secs}s")
+        format!("stable for {}s", repr_f64(secs))
     } else {
         "timed out waiting for idle".into()
     };
@@ -211,10 +215,13 @@ pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize
 fn validate_idle_duration(v: &JsonValue) -> Result<Duration, String> {
     let f = parse_number("stable_seconds", v)?;
     if !f.is_finite() {
-        return Err(format!("stable_seconds must be finite, got {f}"));
+        return Err(format!(
+            "stable_seconds must be finite, got {}",
+            repr_f64(f)
+        ));
     }
     if f < 0.0 {
-        return Err(format!("stable_seconds must be >= 0, got {f}"));
+        return Err(format!("stable_seconds must be >= 0, got {}", repr_f64(f)));
     }
     Ok(duration_from_secs(f))
 }
@@ -345,7 +352,7 @@ pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
         return StepResult {
             name,
             passed: false,
-            detail: format!("seconds must be finite, got {seconds}"),
+            detail: format!("seconds must be finite, got {}", repr_f64(seconds)),
             screen: session.screen().to_string(),
         };
     }
@@ -353,7 +360,7 @@ pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
         return StepResult {
             name,
             passed: false,
-            detail: format!("seconds must be >= 0, got {seconds}"),
+            detail: format!("seconds must be >= 0, got {}", repr_f64(seconds)),
             screen: session.screen().to_string(),
         };
     }
@@ -361,7 +368,10 @@ pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
         return StepResult {
             name,
             passed: false,
-            detail: format!("seconds is out of range for the platform sleep clock, got {seconds}"),
+            detail: format!(
+                "seconds is out of range for the platform sleep clock, got {}",
+                repr_f64(seconds)
+            ),
             screen: session.screen().to_string(),
         };
     }
@@ -393,10 +403,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
     let pattern_str = match step.get("pattern").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
         None => {
-            let got = step
-                .get("pattern")
-                .map(type_name)
-                .unwrap_or_else(|| "None".to_string());
+            let got = type_name(step.get("pattern").unwrap_or(&JsonValue::Null));
             return StepResult {
                 name,
                 passed: false,
@@ -411,7 +418,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
             return StepResult {
                 name,
                 passed: false,
-                detail: format!("invalid regex {pattern_str:?}: {e}"),
+                detail: format!("invalid regex {}: {e}", repr_str(&pattern_str)),
                 screen: session.screen().to_string(),
             };
         }
@@ -460,8 +467,9 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
         name,
         passed: false,
         detail: format!(
-            "timed out waiting for regex {pattern_str:?} after {}s",
-            timeout.as_secs_f64()
+            "timed out waiting for regex {} after {}s",
+            repr_str(&pattern_str),
+            repr_f64(timeout.as_secs_f64())
         ),
         screen: session.screen().to_string(),
     }
@@ -489,37 +497,38 @@ fn try_match(
     let caps_opt = captures_in(re, screen_text).or_else(|| captures_in(re, raw_text));
     let caps = caps_opt?;
     let full = caps.get(0).map(|m| m.as_str()).unwrap_or("");
-    let mut named_pairs: Vec<(String, String)> = Vec::new();
-    for n in re.capture_names().flatten() {
-        if let Some(m) = caps.name(n) {
-            named_pairs.push((n.to_string(), m.as_str().to_string()));
-        }
-    }
+    // Python's `groupdict()` carries every named group, matched or not; an
+    // unmatched one renders as `None` rather than vanishing from the report.
+    let named: Vec<String> = re
+        .capture_names()
+        .flatten()
+        .map(|n| match caps.name(n) {
+            Some(m) => format!("{n}={}", repr_str(m.as_str())),
+            None => format!("{n}=None"),
+        })
+        .collect();
     let has_pos = caps.len() > 1;
     let mut parts: Vec<String> = Vec::new();
-    if !named_pairs.is_empty() {
-        let pairs = named_pairs
-            .iter()
-            .map(|(k, v)| format!("{k}={v:?}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        parts.push(pairs);
+    if !named.is_empty() {
+        parts.push(named.join(", "));
     }
     if has_pos {
         let groups: Vec<String> = (1..caps.len())
             .map(|i| match caps.get(i) {
-                Some(m) => format!("{:?}", m.as_str()),
+                Some(m) => repr_str(m.as_str()),
                 None => "None".to_string(),
             })
             .collect();
-        parts.push(format!("groups=({})", groups.join(", ")));
+        parts.push(format!("groups={}", repr_tuple(&groups)));
     }
+    let pattern = repr_str(pattern_str);
     let detail = if parts.is_empty() {
-        format!("matched {pattern_str:?} -> match={full:?}")
+        format!("matched {pattern} -> match={}", repr_str(full))
     } else {
         format!(
-            "matched {pattern_str:?} -> {} (full: {full:?})",
-            parts.join("; ")
+            "matched {pattern} -> {} (full: {})",
+            parts.join("; "),
+            repr_str(full)
         )
     };
     Some(StepResult {
@@ -528,17 +537,6 @@ fn try_match(
         detail,
         screen: screen_text.to_string(),
     })
-}
-
-fn type_name(v: &JsonValue) -> String {
-    match v {
-        JsonValue::Null => "NoneType".into(),
-        JsonValue::Bool(_) => "bool".into(),
-        JsonValue::Number(_) => "number".into(),
-        JsonValue::String(_) => "str".into(),
-        JsonValue::Array(_) => "list".into(),
-        JsonValue::Object(_) => "dict".into(),
-    }
 }
 
 // ---- dispatch ------------------------------------------------------------
