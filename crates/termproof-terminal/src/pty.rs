@@ -308,6 +308,11 @@ impl PtySession {
             .unwrap_or_default()
     }
 
+    /// Number of raw output bytes seen so far, without copying them.
+    pub fn raw_output_len(&self) -> usize {
+        self.raw_output.lock().map(|r| r.len()).unwrap_or_default()
+    }
+
     /// Current raw output as lossy UTF-8.
     pub fn raw_output_str(&self) -> String {
         String::from_utf8_lossy(&self.raw_output()).to_string()
@@ -488,19 +493,27 @@ impl PtySession {
         Ok(false)
     }
 
-    /// Wait until screen has been stable for `stable` within `timeout`.
+    /// Wait until screen *and* raw output have been stable for `stable`
+    /// within `timeout`.
+    ///
+    /// The raw length matters: a child repainting the same cells leaves the
+    /// screen byte-identical while still producing output, and calling that
+    /// idle settles on a session that is mid-draw.
     pub fn wait_for_idle(&mut self, stable: Duration, timeout: Duration) -> Result<bool, PtyError> {
         if self.child.is_none() {
             return Err(PtyError::NotStarted);
         }
         let deadline = Instant::now() + timeout;
         let mut last_screen = self.screen_text();
+        let mut last_raw_len = self.raw_output_len();
         let mut stable_since = Instant::now();
         while Instant::now() < deadline {
             self.read_available(Duration::from_millis(50));
             let current = self.screen_text();
-            if current != last_screen {
+            let current_raw_len = self.raw_output_len();
+            if current != last_screen || current_raw_len != last_raw_len {
                 last_screen = current;
+                last_raw_len = current_raw_len;
                 stable_since = Instant::now();
             }
             if stable_since.elapsed() >= stable {
@@ -724,6 +737,42 @@ mod tests {
             sess.raw_output_str()
         );
         sess.close();
+    }
+
+    /// A child can be busy without changing the screen: repainting the same
+    /// cells leaves `screen_text` byte-identical while raw output keeps
+    /// growing. Idle must mean "screen *and* raw output stopped", or a
+    /// repainting TUI is declared settled while it is still working.
+    ///
+    /// This only became reachable once the screen was a real emulator. The
+    /// strip-escapes stub was append-only, so any output at all moved the
+    /// screen and screen-only idle detection was accidentally sufficient.
+    #[test]
+    fn idle_accounts_for_output_that_does_not_change_the_screen() {
+        // Repaint "hello" at the home cell for ~1s, then go quiet.
+        let config = PtyConfig::new(vec![
+            "sh".into(),
+            "-c".into(),
+            "printf hello; i=0; while [ $i -lt 20 ]; do printf '\\033[1;1Hhello'; \
+             sleep 0.05; i=$((i+1)); done; sleep 5"
+                .into(),
+        ]);
+        let mut sess = PtySession::new(config, 80, 24).expect("new");
+        sess.spawn().expect("spawn");
+
+        let start = Instant::now();
+        let idle = sess
+            .wait_for_idle(Duration::from_millis(300), Duration::from_secs(10))
+            .expect("wait");
+        let elapsed = start.elapsed();
+        sess.close();
+
+        assert!(idle, "never reported idle");
+        assert!(
+            elapsed >= Duration::from_millis(800),
+            "reported idle after {elapsed:?} while the child was still \
+             repainting; screen-only comparison missed the raw output"
+        );
     }
 
     /// A terminal has one stream; stderr is not separable from stdout.
