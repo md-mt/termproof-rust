@@ -154,8 +154,15 @@ pub trait ExecutionContext: Send {
     }
 
     /// Return the recipe's timeout as Duration.
+    ///
+    /// `timeout_seconds` comes out of the recipe file, so NaN, a negative and
+    /// a value past `Duration::from_secs_f64`'s ceiling are all reachable.
+    /// This uses the same clamping the step layer applies to its own
+    /// `timeout_seconds` (`specs/002-builtin-steps/spec.md` FR-006, FR-007):
+    /// non-positive and NaN are a deadline already past, and anything
+    /// enormous is clamped to the far future rather than panicking.
     fn recipe_timeout(&self, recipe: &Recipe) -> Duration {
-        Duration::from_secs_f64(recipe.timeout_seconds)
+        crate::steps::duration_from_secs(recipe.timeout_seconds)
     }
 }
 
