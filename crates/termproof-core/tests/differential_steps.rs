@@ -37,7 +37,7 @@ const AGREEMENT_FLOOR: usize = 27;
 /// Cases agreeing on pass/fail, whatever the detail says. A fix that corrects a
 /// verdict but leaves the wording to a later commit moves this and not the
 /// floor above, so it still has to move a number.
-const VERDICT_FLOOR: usize = 100;
+const VERDICT_FLOOR: usize = 104;
 
 /// Wall-clock budget per case. The slowest legitimate case in the corpus waits
 /// three seconds; anything past this is not waiting, it is stuck.

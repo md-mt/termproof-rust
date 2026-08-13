@@ -256,11 +256,24 @@ pub fn send_text<S: Session>(session: &mut S, step: &JsonValue, index: usize) ->
 /// `send_line` — feed `text + "\r"` (default `text` is `""` as in Python).
 pub fn send_line<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
     let name = display_name(step, index, "send_line");
-    let text = step
-        .get("text")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    // FR-013: a missing `text` defaults to `""`. A present one must be a
+    // string -- FR-022 records the oracle failing every other type, and
+    // `as_str().unwrap_or("")` cannot tell the two cases apart.
+    let text = match step.get("text") {
+        None => String::new(),
+        Some(JsonValue::String(s)) => s.clone(),
+        Some(other) => {
+            return StepResult {
+                name,
+                passed: false,
+                detail: format!(
+                    "send_line 'text' must be a string, got {}",
+                    type_name(other)
+                ),
+                screen: session.screen().to_string(),
+            };
+        }
+    };
     match session.send_line(&text) {
         Ok(()) => StepResult {
             name,
