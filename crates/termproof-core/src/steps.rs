@@ -41,6 +41,50 @@ fn parse_number(field: &str, v: &JsonValue) -> Result<f64, String> {
     }
 }
 
+/// A deadline no run reaches. `1e300` seconds is not expressible as a
+/// `Duration` and `Instant::now() + d` overflows long before that, so an
+/// unreachable deadline is the only faithful reading of "wait that long".
+const FAR_FUTURE: Duration = Duration::from_secs(100 * 365 * 24 * 60 * 60);
+
+/// Convert a duration in seconds without panicking on the extremes.
+///
+/// `Duration::from_secs_f64` panics on NaN and above roughly `1.8e19`, and
+/// every one of these values is reachable from a recipe. Spec 002 FR-007: a
+/// large finite duration is legal input and the implementation "MUST NOT
+/// panic, saturate silently, or reject the value; the correct behaviour is to
+/// clamp the internal deadline to the far future and keep waiting". A
+/// non-positive or NaN duration is a deadline already past, which is what
+/// makes the oracle's wait loop exit on its first test (FR-006).
+fn duration_from_secs(seconds: f64) -> Duration {
+    if seconds.is_nan() || seconds <= 0.0 {
+        Duration::ZERO
+    } else if seconds >= FAR_FUTURE.as_secs() as f64 {
+        FAR_FUTURE
+    } else {
+        Duration::from_secs_f64(seconds)
+    }
+}
+
+/// `sleep` is the one duration that cannot be clamped: clamping it would hang
+/// the run for a century instead of reporting anything. The oracle's own sleep
+/// primitive rejects a value outside `time_t` range rather than sleeping
+/// (FR-008), so rejecting keeps the verdict and loses only the wording.
+const MAX_SLEEP_SECONDS: f64 = i64::MAX as f64;
+
+/// `Instant::now() + d` panics on overflow, so a deadline is optional: `None`
+/// means "further away than this platform's clock can express".
+fn deadline_from(timeout: Duration) -> Option<std::time::Instant> {
+    std::time::Instant::now().checked_add(timeout)
+}
+
+/// Whether a deadline that may be unrepresentable has passed.
+fn deadline_passed(deadline: Option<std::time::Instant>) -> bool {
+    match deadline {
+        Some(d) => std::time::Instant::now() >= d,
+        None => false,
+    }
+}
+
 fn validate_timeout(raw: &JsonValue, field: &str) -> Result<Duration, String> {
     let f = parse_number(field, raw)?;
     if !f.is_finite() {
@@ -49,7 +93,7 @@ fn validate_timeout(raw: &JsonValue, field: &str) -> Result<Duration, String> {
     if f <= 0.0 {
         return Err(format!("{field} must be > 0, got {f}"));
     }
-    Ok(Duration::from_secs_f64(f))
+    Ok(duration_from_secs(f))
 }
 
 // ---- wait_for_text -------------------------------------------------------
@@ -172,7 +216,7 @@ fn validate_idle_duration(v: &JsonValue) -> Result<Duration, String> {
     if f < 0.0 {
         return Err(format!("stable_seconds must be >= 0, got {f}"));
     }
-    Ok(Duration::from_secs_f64(f))
+    Ok(duration_from_secs(f))
 }
 
 // ---- send_text -----------------------------------------------------------
@@ -300,6 +344,14 @@ pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
             screen: session.screen().to_string(),
         };
     }
+    if seconds > MAX_SLEEP_SECONDS {
+        return StepResult {
+            name,
+            passed: false,
+            detail: format!("seconds is out of range for the platform sleep clock, got {seconds}"),
+            screen: session.screen().to_string(),
+        };
+    }
     std::thread::sleep(Duration::from_secs_f64(seconds));
     let _ = session.read_available(Duration::ZERO);
     StepResult {
@@ -369,7 +421,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
     };
 
     // -- poll loop (same cadence as wait_for_text: 50ms ticks) --------------
-    let deadline = std::time::Instant::now() + timeout;
+    let deadline = deadline_from(timeout);
 
     loop {
         let _ = session.read_available(Duration::from_millis(50));
@@ -378,7 +430,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
         if let Some(result) = try_match(&re, &pattern_str, &name, &screen_text, &raw_text) {
             return result;
         }
-        if std::time::Instant::now() >= deadline {
+        if deadline_passed(deadline) {
             break;
         }
         if !session.is_alive() {

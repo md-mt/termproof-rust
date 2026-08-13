@@ -33,11 +33,11 @@ use termproof_terminal::{InMemorySession, Session, SessionError};
 ///
 /// At the commit that introduced this file: 26 / 115, five panics and one case
 /// that never returned.
-const AGREEMENT_FLOOR: usize = 26;
-/// Cases where recipe-controlled input takes the process down. Must reach zero.
-const PANIC_CEILING: usize = 5;
-/// Cases where recipe-controlled input wedges the run. Must reach zero.
-const STUCK_CEILING: usize = 1;
+const AGREEMENT_FLOOR: usize = 27;
+/// Cases where recipe-controlled input takes the process down.
+const PANIC_CEILING: usize = 0;
+/// Cases where recipe-controlled input wedges the run.
+const STUCK_CEILING: usize = 0;
 
 /// Wall-clock budget per case. The slowest legitimate case in the corpus waits
 /// three seconds; anything past this is not waiting, it is stuck.
