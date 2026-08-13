@@ -71,7 +71,7 @@ const FAR_FUTURE: Duration = Duration::from_secs(100 * 365 * 24 * 60 * 60);
 /// clamp the internal deadline to the far future and keep waiting". A
 /// non-positive or NaN duration is a deadline already past, which is what
 /// makes the oracle's wait loop exit on its first test (FR-006).
-fn duration_from_secs(seconds: f64) -> Duration {
+pub(crate) fn duration_from_secs(seconds: f64) -> Duration {
     if seconds.is_nan() || seconds <= 0.0 {
         Duration::ZERO
     } else if seconds >= FAR_FUTURE.as_secs() as f64 {
@@ -132,7 +132,11 @@ fn validate_regex_timeout(raw: &JsonValue, field: &str) -> Result<f64, String> {
 // ---- wait_for_text -------------------------------------------------------
 
 /// `wait_for_text` — poll `screen` and `raw_output` for `text`.
-pub fn wait_for_text<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn wait_for_text<S: Session + ?Sized>(
+    session: &mut S,
+    step: &JsonValue,
+    index: usize,
+) -> StepResult {
     let name = display_name(step, index, "wait_for_text");
     let text = match step.get("text").and_then(|v| v.as_str()) {
         Some(t) => t.to_string(),
@@ -189,7 +193,11 @@ pub fn wait_for_text<S: Session>(session: &mut S, step: &JsonValue, index: usize
 // ---- wait_for_idle -------------------------------------------------------
 
 /// `wait_for_idle` — screen has been stable for `stable_seconds`.
-pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn wait_for_idle<S: Session + ?Sized>(
+    session: &mut S,
+    step: &JsonValue,
+    index: usize,
+) -> StepResult {
     let name = display_name(step, index, "wait_for_idle");
     // FR-006 again, on both keys. The detail renders the coerced float rather
     // than the clamped `Duration`, because `-1.0`, `nan` and `inf` are all
@@ -250,7 +258,11 @@ pub fn wait_for_idle<S: Session>(session: &mut S, step: &JsonValue, index: usize
 // ---- send_text -----------------------------------------------------------
 
 /// `send_text` — feed `text` verbatim (no newline).
-pub fn send_text<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn send_text<S: Session + ?Sized>(
+    session: &mut S,
+    step: &JsonValue,
+    index: usize,
+) -> StepResult {
     let name = display_name(step, index, "send_text");
     let text = match step.get("text").and_then(|v| v.as_str()) {
         Some(t) => t.to_string(),
@@ -282,7 +294,11 @@ pub fn send_text<S: Session>(session: &mut S, step: &JsonValue, index: usize) ->
 // ---- send_line -----------------------------------------------------------
 
 /// `send_line` — feed `text + "\r"` (default `text` is `""` as in Python).
-pub fn send_line<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn send_line<S: Session + ?Sized>(
+    session: &mut S,
+    step: &JsonValue,
+    index: usize,
+) -> StepResult {
     let name = display_name(step, index, "send_line");
     // FR-013: a missing `text` defaults to `""`. A present one must be a
     // string -- FR-022 records the oracle failing every other type, and
@@ -321,7 +337,7 @@ pub fn send_line<S: Session>(session: &mut S, step: &JsonValue, index: usize) ->
 // ---- press ---------------------------------------------------------------
 
 /// `press` — send a named key or `Ctrl-` combo.
-pub fn press<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn press<S: Session + ?Sized>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
     let name = display_name(step, index, "press");
     let key = match step.get("key").and_then(|v| v.as_str()) {
         Some(k) => k.to_string(),
@@ -353,7 +369,7 @@ pub fn press<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
 // ---- sleep ---------------------------------------------------------------
 
 /// `sleep` — wall-clock sleep then `read_available(0)` drain.
-pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn sleep<S: Session + ?Sized>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
     let name = display_name(step, index, "sleep");
     let seconds = match step.get("seconds") {
         None => 1.0,
@@ -417,7 +433,11 @@ pub fn sleep<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> Ste
 ///   boundary).
 /// * evidence `detail` is `matched {pattern!r} -> ...` with named groups,
 ///   positional groups, and full match (same branches as `_format_match`).
-pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn wait_for_regex<S: Session + ?Sized>(
+    session: &mut S,
+    step: &JsonValue,
+    index: usize,
+) -> StepResult {
     let name = display_name(step, index, "wait_for_regex");
 
     // -- validate pattern ---------------------------------------------------
@@ -568,7 +588,11 @@ fn try_match(
 /// Unknown actions produce a failed `StepResult` with the same shape as
 /// `VerificationRunner._run_step` (which turns a `KeyError`/`ValueError` into
 /// a failed step with the exception text in `detail`).
-pub fn dispatch<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> StepResult {
+pub fn dispatch<S: Session + ?Sized>(
+    session: &mut S,
+    step: &JsonValue,
+    index: usize,
+) -> StepResult {
     let action = match step.get("action").and_then(|v| v.as_str()) {
         Some(a) => a,
         None => {
@@ -601,7 +625,7 @@ pub fn dispatch<S: Session>(session: &mut S, step: &JsonValue, index: usize) -> 
 
 /// Run a sequence of steps, stopping on first failure (matches Python's
 /// `VerificationRunner._run_pty/_run_process` `if not passed: break`).
-pub fn run_steps<S: Session>(session: &mut S, steps: &[JsonValue]) -> Vec<StepResult> {
+pub fn run_steps<S: Session + ?Sized>(session: &mut S, steps: &[JsonValue]) -> Vec<StepResult> {
     let mut out = Vec::with_capacity(steps.len());
     for (idx, step) in steps.iter().enumerate() {
         let r = dispatch(session, step, idx + 1);
