@@ -24,9 +24,14 @@ nothing here should be read as a claim that it behaves the same way.
   diagnostics do not match Python's; `MockSession` encodes test-passing rather
   than PTY semantics; the step dispatch table is exercised for 1 of 7 actions
   and `wait_for_idle` has no coverage.
-- Some subsystems are offline stubs rather than implementations — the PTY
-  backend and terminal screen in `termproof-terminal` say so in their module
-  docs.
+- The PTY backend and terminal screen in `termproof-terminal` are no longer
+  stubs: children run on a real pseudo-terminal via `portable-pty`, and the
+  screen is a `vt100` cell grid that interprets escapes instead of stripping
+  them. **Nothing consumes them yet.** `PtySession` implements no `Session`,
+  the only `Session` implementations are `InMemorySession` and
+  `StubDockerSession`, and `termproof run` does not execute recipes. So the
+  terminal layer is correct but not yet reachable from the CLI, and the parity
+  numbers above are unchanged by it.
 
 Until a parity gate passes, treat the Python implementation as the only
 authority on TermProof's behaviour.
