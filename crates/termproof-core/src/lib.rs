@@ -1,14 +1,17 @@
 //! TermProof core: models, config, schema, registries, planning, orchestration, and execution (RUST-004 + RUST-010 + RUST-016).
 
 pub mod agent;
+pub mod assertions;
 pub mod cache;
 pub mod config;
 pub mod error;
 pub mod execution;
 pub mod models;
 pub mod planner;
+pub mod pypath;
 pub mod pyregex;
 pub mod pyrepr;
+pub mod pyschema;
 pub mod recipe;
 pub mod result;
 pub mod runner;

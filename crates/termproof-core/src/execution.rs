@@ -43,13 +43,11 @@ pub enum ExecutionError {
 /// The recipe's declared assertions plus the implicit `expect_exit_code` one.
 ///
 /// Shared by the two `evaluate_assertions*` default bodies so the assertion
-/// list cannot drift between the step-aware and step-blind paths.
+/// list cannot drift between the step-aware and step-blind paths, and defined
+/// once in [`crate::assertions`] so it cannot drift from the list the harness
+/// measures either.
 fn assertions_with_implicit(recipe: &Recipe) -> Vec<Value> {
-    let mut all = recipe.assertions.clone();
-    if let Some(expected) = recipe.expect_exit_code {
-        all.push(serde_json::json!({"type": "exit_code", "value": expected}));
-    }
-    all
+    crate::assertions::evaluated_list(recipe)
 }
 
 /// Public context passed to execution modes.
@@ -77,6 +75,12 @@ pub trait ExecutionContext: Send {
     ) -> StepResult;
 
     /// Evaluate a single assertion.
+    ///
+    /// The default body is [`crate::assertions::evaluate`], the one shared
+    /// implementation of the eight built-ins. Before it existed this was a
+    /// required method with no in-tree answer, so every execution mode was free
+    /// to answer differently and nothing measured whether they agreed. An
+    /// implementation that needs its own registry still overrides it.
     fn evaluate_assertion(
         &self,
         recipe: &Recipe,
@@ -84,7 +88,9 @@ pub trait ExecutionContext: Send {
         screen: &str,
         raw_output: &str,
         exit_code: Option<i32>,
-    ) -> AssertionResult;
+    ) -> AssertionResult {
+        crate::assertions::evaluate(recipe, assertion, screen, raw_output, exit_code)
+    }
 
     /// Evaluate a single assertion, with the screen captured after each step.
     ///

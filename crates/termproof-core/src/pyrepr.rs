@@ -171,6 +171,22 @@ pub fn repr_json(value: &JsonValue) -> String {
     }
 }
 
+/// Python's `str` of a value that arrived as JSON.
+///
+/// `str` and `repr` differ for exactly one type: a string is its own `str` and
+/// a quoted literal in `repr`. Containers use `repr` for their elements even
+/// under `str`, so the recursion goes back through [`repr_json`].
+///
+/// Spec 003 FR-009 is the reason this exists separately: `exit_code`'s detail
+/// interpolates the recipe's value with `str`, so `value: "0"` reads
+/// `expected 0, got 0` — the same text a passing `value: 0` produces.
+pub fn str_json(value: &JsonValue) -> String {
+    match value {
+        JsonValue::String(s) => s.clone(),
+        other => repr_json(other),
+    }
+}
+
 /// The Python type name of a value that arrived as JSON, as `type(x).__name__`
 /// would give it.
 ///
@@ -295,6 +311,21 @@ mod tests {
         assert_eq!(repr_json(&json!([1, "a", null])), "[1, 'a', None]");
         assert_eq!(repr_json(&json!({})), "{}");
         assert_eq!(repr_json(&json!({"a": 1})), "{'a': 1}");
+    }
+
+    /// `str` differs from `repr` only for strings — which is the whole of
+    /// FR-009's surprise, since it makes `"0"` and `0` render identically.
+    #[test]
+    fn str_leaves_strings_unquoted_and_agrees_elsewhere() {
+        assert_eq!(str_json(&json!("0")), "0");
+        assert_eq!(str_json(&json!("it's")), "it's");
+        assert_eq!(str_json(&json!("")), "");
+        assert_eq!(str_json(&json!(null)), "None");
+        assert_eq!(str_json(&json!(true)), "True");
+        assert_eq!(str_json(&json!(0.0)), "0.0");
+        assert_eq!(str_json(&json!(5)), "5");
+        // A container's elements keep `repr` even under `str`.
+        assert_eq!(str_json(&json!(["a"])), "['a']");
     }
 
     /// A JSON number carries no float/int distinction of its own; the literal's
