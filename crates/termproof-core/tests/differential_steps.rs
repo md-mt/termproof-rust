@@ -34,10 +34,10 @@ use termproof_terminal::{InMemorySession, Session, SessionError};
 /// At the commit that introduced this file: 26 / 115, five panics and one case
 /// that never returned.
 const AGREEMENT_FLOOR: usize = 27;
-/// Cases where recipe-controlled input takes the process down.
-const PANIC_CEILING: usize = 0;
-/// Cases where recipe-controlled input wedges the run.
-const STUCK_CEILING: usize = 0;
+/// Cases agreeing on pass/fail, whatever the detail says. A fix that corrects a
+/// verdict but leaves the wording to a later commit moves this and not the
+/// floor above, so it still has to move a number.
+const VERDICT_FLOOR: usize = 100;
 
 /// Wall-clock budget per case. The slowest legitimate case in the corpus waits
 /// three seconds; anything past this is not waiting, it is stuck.
@@ -302,16 +302,17 @@ fn differential_steps_against_python() {
         agreed + verdict_only
     );
 
-    assert!(
-        panicked <= PANIC_CEILING,
-        "{panicked} cases panicked, above the recorded ceiling of {PANIC_CEILING}"
-    );
-    assert!(
-        stuck <= STUCK_CEILING,
-        "{stuck} cases never returned, above the recorded ceiling of {STUCK_CEILING}"
-    );
+    // Recipe-controlled input must never take the process down or wedge the
+    // run. Both were non-zero when this file was written; neither may come back.
+    assert_eq!(panicked, 0, "{panicked} cases panicked");
+    assert_eq!(stuck, 0, "{stuck} cases never returned");
     assert!(
         agreed >= AGREEMENT_FLOOR,
         "agreement dropped to {agreed}/{total}, below the recorded floor of {AGREEMENT_FLOOR}"
+    );
+    assert!(
+        agreed + verdict_only >= VERDICT_FLOOR,
+        "verdict agreement dropped to {}/{total}, below the recorded floor of {VERDICT_FLOOR}",
+        agreed + verdict_only
     );
 }

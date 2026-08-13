@@ -51,6 +51,7 @@ termproof-core = { path = "crates/termproof-core" }
 termproof-terminal = { path = "crates/termproof-terminal" }
 termproof-evidence = { path = "crates/termproof-evidence" }
 regex = { version = "1.13.1", default-features = false, features = ["std", "unicode"] }
+fancy-regex = "0.19.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"

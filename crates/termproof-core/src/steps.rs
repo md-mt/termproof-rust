@@ -392,7 +392,7 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
             };
         }
     };
-    let re = match regex::Regex::new(&pattern_str) {
+    let re = match crate::pyregex::compile(&pattern_str) {
         Ok(r) => r,
         Err(e) => {
             return StepResult {
@@ -454,25 +454,26 @@ pub fn wait_for_regex<S: Session>(session: &mut S, step: &JsonValue, index: usiz
     }
 }
 
+/// A backtracking engine can give up on a pathological pattern. An engine
+/// error is not a match, and it is not a reason to end the run either.
+fn captures_in<'t>(
+    re: &fancy_regex::Regex,
+    text: &'t str,
+) -> Option<fancy_regex::Captures<'t, str>> {
+    if text.is_empty() {
+        return None;
+    }
+    re.captures(text).ok().flatten()
+}
+
 fn try_match(
-    re: &regex::Regex,
+    re: &fancy_regex::Regex,
     pattern_str: &str,
     name: &str,
     screen_text: &str,
     raw_text: &str,
 ) -> Option<StepResult> {
-    let caps_opt = if !screen_text.is_empty() {
-        re.captures(screen_text)
-    } else {
-        None
-    }
-    .or_else(|| {
-        if !raw_text.is_empty() {
-            re.captures(raw_text)
-        } else {
-            None
-        }
-    });
+    let caps_opt = captures_in(re, screen_text).or_else(|| captures_in(re, raw_text));
     let caps = caps_opt?;
     let full = caps.get(0).map(|m| m.as_str()).unwrap_or("");
     let mut named_pairs: Vec<(String, String)> = Vec::new();
@@ -481,7 +482,7 @@ fn try_match(
             named_pairs.push((n.to_string(), m.as_str().to_string()));
         }
     }
-    let has_pos = re.captures_len() > 1;
+    let has_pos = caps.len() > 1;
     let mut parts: Vec<String> = Vec::new();
     if !named_pairs.is_empty() {
         let pairs = named_pairs
@@ -492,7 +493,7 @@ fn try_match(
         parts.push(pairs);
     }
     if has_pos {
-        let groups: Vec<String> = (1..re.captures_len())
+        let groups: Vec<String> = (1..caps.len())
             .map(|i| match caps.get(i) {
                 Some(m) => format!("{:?}", m.as_str()),
                 None => "None".to_string(),
