@@ -1,6 +1,7 @@
 //! TermProof command-line entry point.
 
 mod cli;
+mod run;
 
 use clap::ArgMatches;
 use std::path::PathBuf;
@@ -55,23 +56,7 @@ fn handle_run(m: &ArgMatches) -> i32 {
         eprintln!("{msg}");
         return cli::exit_code::USAGE;
     }
-    let recipes: Vec<PathBuf> = m
-        .get_many::<PathBuf>("recipes")
-        .map(|v| v.cloned().collect())
-        .unwrap_or_default();
-    let out = m
-        .get_one::<PathBuf>("out")
-        .cloned()
-        .unwrap_or_else(|| PathBuf::from(".termproof/runs"));
-    let video = m.get_flag("video") && !m.get_flag("no-video");
-    println!(
-        "run: {} recipe path(s), out={}, video={}, parallel={}",
-        recipes.len(),
-        out.display(),
-        video,
-        parallel
-    );
-    cli::exit_code::SUCCESS
+    run::execute(m, parallel)
 }
 
 fn handle_list(m: &ArgMatches) -> i32 {

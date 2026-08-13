@@ -1591,7 +1591,9 @@ name = "termproof-cli"
 version = "0.2.1"
 dependencies = [
  "clap",
+ "serde_json",
  "termproof-core",
+ "termproof-evidence",
 ]
 
 [[package]]
