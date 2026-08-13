@@ -31,7 +31,9 @@ use std::time::{Duration, Instant};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
 use crate::cast::{ActivityClock, CastRecorder};
+use crate::error::SessionError;
 use crate::screen::TerminalScreen;
+use crate::session::Session;
 
 /// EOT — what a terminal sends for "end of input"; closing a fd is a pipe
 /// concept and means nothing to a tty.
@@ -133,6 +135,14 @@ impl std::error::Error for PtyError {}
 /// Spawns the child onto a pseudo-terminal, drains the master on a background
 /// thread into `TerminalScreen` and `CastRecorder`, and exposes
 /// `wait_for_text` / `wait_for_idle` / `resize`. `Drop` terminates the child.
+///
+/// It also implements [`Session`], which is how execution modes reach it.
+/// Several inherent methods share a name with a trait method and differ in
+/// return type — inherent `screen` yields an owned `String` read live from the
+/// screen mutex, the trait's yields a `&str` borrowed from a snapshot taken at
+/// the end of the last `&mut self` trait call. Rust prefers the inherent
+/// method on a concrete `PtySession`, so callers that want the trait's
+/// behaviour must go through `&mut dyn Session` or `Session::screen(&session)`.
 pub struct PtySession {
     config: PtyConfig,
     cols: u16,
@@ -147,6 +157,18 @@ pub struct PtySession {
     reader_handle: Option<JoinHandle<()>>,
     exit_code: Option<i32>,
     exit_signal: Option<String>,
+    /// Screen text as of the last `Session` call that could have advanced it.
+    ///
+    /// `Session::screen` hands out a `&str` from `&self`, and the live screen
+    /// lives behind a mutex shared with the reader thread, so there is no
+    /// borrow to hand out. Every `&mut self` method of the trait refreshes
+    /// this before returning; the inherent `screen_text` stays live.
+    screen_snapshot: String,
+    /// Raw output as of the last `Session` call that could have advanced it.
+    raw_snapshot: String,
+    /// `config.cast_path` flattened to a path so `Session::cast_path` can
+    /// borrow one. Empty when the session is not recording.
+    cast_path_snapshot: PathBuf,
 }
 
 impl std::fmt::Debug for PtySession {
@@ -170,6 +192,7 @@ impl PtySession {
             return Err(PtyError::SpawnFailed("cols and rows must be > 0".into()));
         }
         let screen = TerminalScreen::new(cols, rows);
+        let cast_path_snapshot = config.cast_path.clone().unwrap_or_default();
         Ok(Self {
             config,
             cols,
@@ -184,6 +207,9 @@ impl PtySession {
             reader_handle: None,
             exit_code: None,
             exit_signal: None,
+            screen_snapshot: String::new(),
+            raw_snapshot: String::new(),
+            cast_path_snapshot,
         })
     }
 
@@ -589,6 +615,12 @@ impl PtySession {
         }
     }
 
+    /// Refresh the snapshots the `Session` accessors borrow from.
+    fn sync_snapshot(&mut self) {
+        self.screen_snapshot = self.screen_text();
+        self.raw_snapshot = self.raw_output_str();
+    }
+
     /// Dimensions.
     pub fn dimensions(&self) -> (u16, u16) {
         (self.cols, self.rows)
@@ -602,6 +634,103 @@ impl PtySession {
     /// Rows.
     pub fn rows(&self) -> u16 {
         self.rows
+    }
+}
+
+impl From<PtyError> for SessionError {
+    fn from(err: PtyError) -> Self {
+        match err {
+            // Recipe-authored input the session cannot honour: an empty argv,
+            // dimensions the kernel will not take, a key that is not in the
+            // map. These are configuration faults, not I/O faults.
+            PtyError::EmptyArgv | PtyError::SpawnFailed(_) | PtyError::UnknownKey(_) => {
+                SessionError::Config(err.to_string())
+            }
+            PtyError::Io(msg) => SessionError::Io(msg),
+            PtyError::NotStarted => SessionError::NotStarted,
+        }
+    }
+}
+
+impl Session for PtySession {
+    fn send_text(&mut self, text: &str) -> Result<(), SessionError> {
+        PtySession::send_text(self, text)?;
+        self.sync_snapshot();
+        Ok(())
+    }
+
+    fn send_line(&mut self, text: &str) -> Result<(), SessionError> {
+        PtySession::send_line(self, text)?;
+        self.sync_snapshot();
+        Ok(())
+    }
+
+    fn press(&mut self, key: &str) -> Result<(), SessionError> {
+        PtySession::press(self, key)?;
+        self.sync_snapshot();
+        Ok(())
+    }
+
+    fn wait_for_text(&mut self, text: &str, timeout: Duration) -> Result<bool, SessionError> {
+        let found = PtySession::wait_for_text(self, text, timeout)?;
+        self.sync_snapshot();
+        Ok(found)
+    }
+
+    fn wait_for_idle(&mut self, stable: Duration, timeout: Duration) -> Result<bool, SessionError> {
+        let idle = PtySession::wait_for_idle(self, stable, timeout)?;
+        self.sync_snapshot();
+        Ok(idle)
+    }
+
+    fn wait_for_exit(&mut self, timeout: Duration) -> Result<Option<i32>, SessionError> {
+        let code = PtySession::wait_for_exit(self, timeout)?;
+        self.sync_snapshot();
+        Ok(code)
+    }
+
+    fn read_available(&mut self, timeout: Duration) -> Result<(), SessionError> {
+        PtySession::read_available(self, timeout);
+        self.sync_snapshot();
+        Ok(())
+    }
+
+    fn is_alive(&mut self) -> bool {
+        PtySession::is_alive(self)
+    }
+
+    fn close(&mut self) -> Result<(), SessionError> {
+        PtySession::close(self);
+        self.sync_snapshot();
+        Ok(())
+    }
+
+    fn screen(&self) -> &str {
+        &self.screen_snapshot
+    }
+
+    fn raw_output(&self) -> &str {
+        &self.raw_snapshot
+    }
+
+    fn exit_code(&self) -> Option<i32> {
+        self.exit_code
+    }
+
+    fn cols(&self) -> u16 {
+        self.cols
+    }
+
+    fn rows(&self) -> u16 {
+        self.rows
+    }
+
+    fn argv(&self) -> &[String] {
+        &self.config.argv
+    }
+
+    fn cast_path(&self) -> &std::path::Path {
+        &self.cast_path_snapshot
     }
 }
 
