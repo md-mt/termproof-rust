@@ -24,11 +24,14 @@ nothing here should be read as a claim that it behaves the same way.
   from 26 of 115 when the harness first ran; panics and cases that never return
   are asserted at zero rather than ratcheted. `harness/README.md` is the
   authority on those counts and on where the remaining 33 cases diverge.
-- **That is a step-layer number, not a product number.** The corpus drives the
-  seven steps against a session with fixed content. Whole-recipe execution, the
-  assertion layer and terminal fidelity — rendering, scrollback, escape
-  sequences — are outside it, and no equivalent measurement exists for them.
-  Reading 82 of 115 as a parity figure for the port would be wrong.
+- **That is a step-layer number, not a product number.** 87 of the 115 cases
+  drive the steps against a session with fixed content; the other 28 — every
+  `send_text`, `send_line` and `press` row — now spawn a real pseudo-terminal
+  child on both sides, so the pty write path is in frame where it was not
+  before. Screen fidelity — rendering, scrollback, escape sequences — is still
+  outside it, as are whole-recipe execution and the assertion layer, and no
+  equivalent measurement exists for them. Reading 82 of 115 as a parity figure
+  for the port would be wrong.
 - Known defects and divergences, in rough severity order: the in-memory session
   double `InMemorySession` encodes test-passing rather than PTY semantics —
   `wait_for_text` answers from fixed content and ignores its deadline, and
@@ -46,13 +49,33 @@ nothing here should be read as a claim that it behaves the same way.
   diverging from Python's `repr` — are fixed, each with a test that failed
   first.
 - The PTY backend and terminal screen in `termproof-terminal` are no longer
-  stubs: children run on a real pseudo-terminal via `portable-pty`, and the
-  screen is a `vt100` cell grid that interprets escapes instead of stripping
-  them. **Nothing consumes them yet.** `PtySession` implements no `Session`,
-  the only `Session` implementations are `InMemorySession` and
-  `StubDockerSession`, and `termproof run` prints a summary of its arguments
-  rather than executing recipes. So the terminal layer is correct but not yet
-  reachable from the CLI, and the step-layer numbers above do not exercise it.
+  stubs, and they are now reachable: children run on a real pseudo-terminal via
+  `portable-pty`, the screen is a `vt100` cell grid that interprets escapes
+  instead of stripping them, `PtySession` implements `Session`, and
+  `PtySessionBackend` is what a run uses by default. `termproof run` executes
+  recipes rather than printing a summary of its arguments — it discovers recipe
+  files under the paths given, loads each one, plans recipe × renderer, runs the
+  steps against a real child, and writes `result.json`, `report.md`,
+  `raw_output.txt`, `screen.txt` and the asciicast per run, plus
+  `latest-report.md` and a JUnit file when `--xml-path` is given.
+- **What a run still cannot do**, so that a green exit is not read as more than
+  it is:
+  - **Assertions are not evaluated.** Every assertion comes back
+    `passed: false` with a diagnostic saying so; RUST-008 (issue #1) owns the
+    eight built-ins. Because `expect_exit_code` becomes an implicit `exit_code`
+    assertion, **any recipe that declares an assertion or an expected exit code
+    reports FAIL today** regardless of what the target did. A recipe with
+    neither runs its steps and reports their verdict honestly.
+  - **Only `execution: scripted` on a pty runs.** A recipe whose
+    `command.pty` is false, or whose `execution` is anything else, is refused
+    with a diagnostic naming the reason and a non-zero exit. Running it on a
+    pty anyway would report a verdict about something the recipe did not ask
+    for. `StubDockerSession` is still a stub.
+  - **`--video`, `--diff`, `--update-baselines` and `--skip-unchanged` are
+    parsed and ignored**, with a warning on stderr rather than silence.
+  - **Failures are not contained.** RUST-009 (issue #2) — turning recipe, step,
+    plugin, process and PTY failures into structured results — is untouched
+    here.
 
 Until a parity gate passes, treat the Python implementation as the only
 authority on TermProof's behaviour.
