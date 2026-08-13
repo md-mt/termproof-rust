@@ -234,34 +234,9 @@ impl ExecutionContext for Runner {
         }
     }
 
-    /// Placeholder until the built-in assertions land (RUST-008, issue #1).
-    ///
-    /// `evaluate_assertion` is a required trait method, so a concrete context
-    /// has to supply something; reporting `passed: false` keeps a run from
-    /// claiming a verdict nobody computed. When RUST-008 gives the trait a
-    /// default body, **delete this method** and the default takes over — that
-    /// is the whole of the handover.
-    fn evaluate_assertion(
-        &self,
-        _recipe: &Recipe,
-        assertion: &Value,
-        _screen: &str,
-        _raw_output: &str,
-        _exit_code: Option<i32>,
-    ) -> ModelAssertion {
-        let kind = assertion
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or("<missing type>");
-        let name = assertion
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or(kind)
-            .to_string();
-        ModelAssertion {
-            name,
-            passed: false,
-            detail: format!("assertion {kind} is not implemented yet (RUST-008)"),
-        }
-    }
+    // `evaluate_assertion` is deliberately absent: the trait's default body is
+    // `assertions::evaluate`, the one shared implementation of the eight
+    // built-ins. The placeholder that used to sit here — every assertion
+    // `passed: false` with "not implemented yet" — said so in its own doc, and
+    // deleting it was the whole of the handover.
 }

@@ -58,14 +58,17 @@ nothing here should be read as a claim that it behaves the same way.
   steps against a real child, and writes `result.json`, `report.md`,
   `raw_output.txt`, `screen.txt` and the asciicast per run, plus
   `latest-report.md` and a JUnit file when `--xml-path` is given.
+- The eight built-in assertions are implemented and evaluated by a real run, so
+  a recipe that declares an assertion or an expected exit code now reports a
+  verdict about what the target did. They are measured the same way the steps
+  are, against a 165-case corpus recorded from the Python implementation:
+  **124/147 full agreement, 143/147 verdict agreement**, and all 18 inputs that
+  end the Python run contained rather than losing the report. The 23 remaining
+  divergences are enumerated in `harness/README.md` — four are the only rows
+  where the two runtimes disagree on pass/fail, and they come from Python's JSON
+  decoder accepting `NaN` and `Infinity`.
 - **What a run still cannot do**, so that a green exit is not read as more than
   it is:
-  - **Assertions are not evaluated.** Every assertion comes back
-    `passed: false` with a diagnostic saying so; RUST-008 (issue #1) owns the
-    eight built-ins. Because `expect_exit_code` becomes an implicit `exit_code`
-    assertion, **any recipe that declares an assertion or an expected exit code
-    reports FAIL today** regardless of what the target did. A recipe with
-    neither runs its steps and reports their verdict honestly.
   - **Only `execution: scripted` on a pty runs.** A recipe whose
     `command.pty` is false, or whose `execution` is anything else, is refused
     with a diagnostic naming the reason and a non-zero exit. Running it on a

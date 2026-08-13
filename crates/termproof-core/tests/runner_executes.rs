@@ -245,8 +245,11 @@ fn the_renderer_table_is_read_from_the_recipe() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The end-to-end proof that the shared assertions are wired to a real run:
+/// `Runner` supplies no `evaluate_assertion` of its own, so what runs here is
+/// the trait's default body — `assertions::evaluate`.
 #[test]
-fn assertions_are_reported_as_unevaluated_until_rust_008_lands() {
+fn assertions_are_evaluated_against_what_the_target_actually_did() {
     let dir = tempdir("assertions");
     let path = write(
         &dir,
@@ -267,21 +270,44 @@ fn assertions_are_reported_as_unevaluated_until_rust_008_lands() {
     // The declared assertion plus the implicit exit_code one (003-FR-019).
     assert_eq!(result.assertions.len(), 2);
     assert_eq!(result.assertions[0].name, "output_contains");
+    assert_eq!(result.assertions[0].detail, "contains 'hi'");
     assert_eq!(result.assertions[1].name, "exit_code");
+    assert_eq!(result.assertions[1].detail, "expected 0, got 0");
     for assertion in &result.assertions {
         assert!(
-            !assertion.passed,
-            "an unevaluated assertion must not report as passing"
-        );
-        assert!(
-            assertion.detail.contains("not implemented"),
-            "detail should say why: {:?}",
+            assertion.passed,
+            "the target printed hi and exited 0: {:?}",
             assertion.detail
         );
     }
-    assert!(
-        !result.passed,
-        "a run with unevaluated assertions is not a pass"
+    assert!(result.passed, "every step and every assertion passed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The other half: an assertion the target does not satisfy fails the run, and
+/// says what it was looking for rather than that nobody looked.
+#[test]
+fn a_failing_assertion_fails_the_run() {
+    let dir = tempdir("assertions-fail");
+    let path = write(
+        &dir,
+        "a.recipe.json",
+        r#"{
+          "recipe_version": 1,
+          "name": "a",
+          "command": {"argv": ["sh", "-c", "echo hi"]},
+          "assertions": [{"type": "output_contains", "value": "definitely-absent"}],
+          "timeout_seconds": 5
+        }"#,
     );
+    let loaded = LoadedRecipe::from_file(&path).expect("load");
+    let result = Runner::new()
+        .run(&loaded.recipe, "default", &dir.join("run"))
+        .expect("run");
+
+    assert!(!result.assertions[0].passed);
+    assert_eq!(result.assertions[0].detail, "contains 'definitely-absent'");
+    assert!(result.assertions[1].passed, "the exit code was still 0");
+    assert!(!result.passed);
     let _ = std::fs::remove_dir_all(&dir);
 }
