@@ -1,76 +1,46 @@
 //! Terminal screen emulation (RUST-006).
 //!
-//! Provides an in-memory view of what a user would see on a terminal.
-//! The intended implementation is `vt100` (see `Cargo.toml` comment).
-//! This offline stub faithfully preserves the same public API and normalization
-//! so the crate builds and tests pass without a registry fetch. Swapping in
-//! `vt100` is a one-line change: `Parser::new(rows, cols, 0)` + `process(bytes)`.
+//! Provides an in-memory view of what a user would see on a terminal, backed
+//! by the `vt100` terminal emulator.
 //!
-//! Unicode is handled by preserving UTF-8 bytes and counting display width via
-//! `chars()`. ANSI escapes are stripped for the plain-text view, matching the
-//! Python `screen_text` behaviour where `pyte.Screen` interprets escapes but
-//! `screen_text` returns only visible characters.
+//! The screen is a fixed `cols` x `rows` cell grid, not an append-only
+//! transcript. Escape sequences are *interpreted*, so erase, cursor
+//! addressing, scroll regions and the alternate buffer all behave as they do
+//! on a real terminal — in particular, text that is erased or overwritten
+//! stops being visible. That non-monotonicity is the whole point: assertions
+//! of the form "X is no longer on screen" are only meaningful against an
+//! emulator.
 //!
-//! Resize is deterministic: the parser is recreated with the new dimensions and
-//! the buffered raw output is replayed.
+//! `contents()` reproduces the Python `screen_text` shape: one entry per
+//! visible row, each right-trimmed, joined with `\n`, with trailing blank rows
+//! dropped. Rows are read individually rather than via `vt100`'s
+//! `Screen::contents`, because the latter splices wrapped rows back into one
+//! logical line while `pyte.Screen.display` — the behavioural oracle — keeps
+//! one entry per physical row.
+//!
+//! Resize is deterministic: the parser is recreated at the new dimensions and
+//! the buffered raw output is replayed, so narrowing and then widening again
+//! restores the original contents rather than truncating cells.
 
-/// Strip ANSI SGR and cursor escapes for the plain-text screen view.
-///
-/// This is a best-effort subset sufficient for TermProof's `screen_contains`
-/// and `screen_not_contains` assertions. Full VT processing (cursor movement,
-/// wrapping, double-width) is delegated to `vt100` once the dependency is
-/// restored; the stub preserves the contract that chunked feeds equal a single
-/// feed and that resize replays deterministically.
-fn strip_ansi(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for c in chars.by_ref() {
-                    if c.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            } else if chars.peek() == Some(&']') {
-                // OSC sequence terminated by BEL or ST.
-                chars.next();
-                for c in chars.by_ref() {
-                    if c == '\x07' {
-                        break;
-                    }
-                    if c == '\x1b' {
-                        if chars.peek() == Some(&'\\') {
-                            chars.next();
-                        }
-                        break;
-                    }
-                }
-            }
-        } else if ch == '\r' {
-            // Treat CR as newline boundary for screen lines, but vt100 would
-            // move cursor to column 0. For plain-text we emit newline.
-            if chars.peek() == Some(&'\n') {
-                // CRLF -> single newline.
-                chars.next();
-            }
-            out.push('\n');
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
+use vt100::Parser;
 
-/// In-memory terminal screen (offline stub for `vt100`).
-#[derive(Debug)]
+/// In-memory terminal screen backed by `vt100`.
 pub struct TerminalScreen {
     cols: u16,
     rows: u16,
     raw: Vec<u8>,
-    // Visible text after feeding.
-    display: String,
+    parser: Parser,
+}
+
+impl std::fmt::Debug for TerminalScreen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TerminalScreen")
+            .field("cols", &self.cols)
+            .field("rows", &self.rows)
+            .field("raw_len", &self.raw.len())
+            .field("contents", &self.contents())
+            .finish()
+    }
 }
 
 impl TerminalScreen {
@@ -81,23 +51,22 @@ impl TerminalScreen {
             cols,
             rows,
             raw: Vec::new(),
-            display: String::new(),
+            // vt100 takes (rows, cols); no scrollback — TermProof asserts on
+            // what is visible, and scrollback would resurrect erased text.
+            parser: Parser::new(rows, cols, 0),
         }
     }
 
     /// Feed raw terminal bytes.
+    ///
+    /// Bytes are handed to the parser as-is, so a multi-byte character split
+    /// across two chunks is reassembled rather than replaced with U+FFFD.
     pub fn feed_bytes(&mut self, data: &[u8]) {
         if data.is_empty() {
             return;
         }
         self.raw.extend_from_slice(data);
-        let chunk = String::from_utf8_lossy(data);
-        let stripped = strip_ansi(&chunk);
-        // Append to display buffer; vt100 would handle wrapping/cursor. Stub
-        // just concatenates, which is sufficient for `screen_contains` over
-        // streaming output and for deterministic chunk tests.
-        self.display.push_str(&stripped);
-        self.truncate_to_rows();
+        self.parser.process(data);
     }
 
     /// Feed a UTF-8 string.
@@ -107,12 +76,16 @@ impl TerminalScreen {
 
     /// Current plain-text contents, normalized like Python `screen_text`.
     pub fn contents(&self) -> String {
-        screen_text_normalize(&self.display)
+        let mut lines = self.visible_rows();
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+        }
+        lines.join("\n")
     }
 
-    /// Raw display without normalization.
+    /// Raw display without normalization: every visible row, blanks included.
     pub fn raw_contents(&self) -> String {
-        self.display.clone()
+        self.visible_rows().join("\n")
     }
 
     /// Resize the screen, replaying buffered raw output.
@@ -120,13 +93,11 @@ impl TerminalScreen {
         assert!(cols > 0 && rows > 0, "cols and rows must be > 0");
         self.cols = cols;
         self.rows = rows;
-        // Replay.
-        let raw = self.raw.clone();
-        self.display.clear();
-        let chunk = String::from_utf8_lossy(&raw);
-        let stripped = strip_ansi(&chunk);
-        self.display.push_str(&stripped);
-        self.truncate_to_rows();
+        // `Parser::set_size` truncates cells past the new width, which would
+        // make a narrow-then-widen round trip lossy. Replay instead.
+        let mut parser = Parser::new(rows, cols, 0);
+        parser.process(&self.raw);
+        self.parser = parser;
     }
 
     /// Current columns.
@@ -147,32 +118,17 @@ impl TerminalScreen {
     /// Clear the screen and replay buffer.
     pub fn clear(&mut self) {
         self.raw.clear();
-        self.display.clear();
+        self.parser = Parser::new(self.rows, self.cols, 0);
     }
 
-    fn truncate_to_rows(&mut self) {
-        // Keep at most `rows` lines of display for deterministic behavior.
-        // The Python `pyte.Screen` scrolls; stub keeps last `rows` lines.
-        let lines: Vec<&str> = self.display.lines().collect();
-        if lines.len() > self.rows as usize {
-            let keep = lines[lines.len() - self.rows as usize..].join("\n");
-            self.display = keep;
-            if self.display.chars().last().is_some_and(|c| c != '\n') {
-                // Ensure trailing newline handling matches vt100.
-            }
-        }
+    /// Every visible row, right-trimmed, in top-to-bottom order.
+    fn visible_rows(&self) -> Vec<String> {
+        self.parser
+            .screen()
+            .rows(0, self.cols)
+            .map(|row| row.trim_end().to_string())
+            .collect()
     }
-}
-
-/// Normalize display to match Python `screen_text`.
-///
-/// Right-trim each line and drop trailing empty lines.
-fn screen_text_normalize(raw: &str) -> String {
-    let mut lines: Vec<String> = raw.lines().map(|l| l.trim_end().to_string()).collect();
-    while lines.last().is_some_and(|l| l.is_empty()) {
-        lines.pop();
-    }
-    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -194,7 +150,7 @@ mod tests {
     }
 
     #[test]
-    fn ansi_escape_is_stripped() {
+    fn ansi_escape_is_interpreted_not_emitted() {
         let mut s = TerminalScreen::new(80, 24);
         s.feed_str("\x1b[2J\x1b[H\x1b[31mred\x1b[0m");
         assert!(s.contents().contains("red"));
@@ -223,14 +179,17 @@ mod tests {
         let mut s = TerminalScreen::new(40, 10);
         s.feed_str("hello world this is a long line that will wrap");
         let before = s.contents();
+        // Narrowing rewraps: the same text, laid out over more rows.
         s.resize(20, 10);
         let after = s.contents();
-        assert!(after.contains("hello"));
-        // Stub replays, so before and after are equal; widen should still contain text.
-        assert_eq!(before, after);
+        assert!(after.contains("hello"), "text lost on narrow: {after:?}");
+        assert!(
+            after.lines().count() > before.lines().count(),
+            "narrowing did not rewrap: {before:?} -> {after:?}"
+        );
+        // Widening back is lossless because the raw stream is replayed.
         s.resize(40, 10);
-        let restored = s.contents();
-        assert!(restored.contains("hello world"));
+        assert_eq!(s.contents(), before, "resize round trip was lossy");
     }
 
     #[test]
@@ -254,5 +213,90 @@ mod tests {
         s.clear();
         assert!(s.is_empty());
         assert_eq!(s.contents(), "");
+    }
+
+    // --- Non-monotonicity: text must be able to disappear. ---
+    //
+    // A screen built by stripping escapes can only ever grow, so every
+    // "did X go away?" assertion fails against it. These tests are the
+    // regression guard for that class of defect.
+
+    #[test]
+    fn erase_display_removes_earlier_text() {
+        let mut s = TerminalScreen::new(80, 24);
+        s.feed_str("FIRST TEXT\r\n");
+        assert!(s.contents().contains("FIRST TEXT"));
+
+        s.feed_str("\x1b[H\x1b[2J");
+        s.feed_str("SECOND TEXT\r\n");
+
+        let c = s.contents();
+        assert!(
+            !c.contains("FIRST TEXT"),
+            "erase did not remove text: {c:?}"
+        );
+        assert!(c.contains("SECOND TEXT"), "second text missing: {c:?}");
+    }
+
+    #[test]
+    fn cursor_addressing_overwrites_in_place() {
+        let mut s = TerminalScreen::new(20, 5);
+        s.feed_str("OPEN\r\n");
+        // Home, then write over the same cell run.
+        s.feed_str("\x1b[1;1HSHUT");
+
+        let c = s.contents();
+        assert!(!c.contains("OPEN"), "overwrite left stale text: {c:?}");
+        assert!(c.contains("SHUT"), "overwrite text missing: {c:?}");
+    }
+
+    #[test]
+    fn erase_in_line_removes_rest_of_line() {
+        let mut s = TerminalScreen::new(40, 5);
+        s.feed_str("keep|DROPTHIS");
+        // Move back to just after "keep|" (column 6) and erase to end of line.
+        s.feed_str("\x1b[1;6H\x1b[K");
+
+        let c = s.contents();
+        assert!(!c.contains("DROPTHIS"), "EL did not erase: {c:?}");
+        assert!(c.contains("keep|"), "EL erased too much: {c:?}");
+    }
+
+    #[test]
+    fn alternate_screen_hides_and_restores_primary() {
+        let mut s = TerminalScreen::new(40, 6);
+        s.feed_str("PRIMARY CONTENT\r\n");
+
+        // Enter the alternate buffer and draw something else.
+        s.feed_str("\x1b[?1049h");
+        s.feed_str("\x1b[H\x1b[2JOVERLAY CONTENT\r\n");
+        let alt = s.contents();
+        assert!(
+            !alt.contains("PRIMARY CONTENT"),
+            "primary visible while on alternate buffer: {alt:?}"
+        );
+        assert!(alt.contains("OVERLAY CONTENT"), "overlay missing: {alt:?}");
+
+        // Leave it; the primary buffer must come back.
+        s.feed_str("\x1b[?1049l");
+        let restored = s.contents();
+        assert!(
+            restored.contains("PRIMARY CONTENT"),
+            "primary not restored: {restored:?}"
+        );
+        assert!(
+            !restored.contains("OVERLAY CONTENT"),
+            "overlay leaked into primary: {restored:?}"
+        );
+    }
+
+    #[test]
+    fn backspace_overwrite_removes_character() {
+        let mut s = TerminalScreen::new(20, 3);
+        s.feed_str("typo");
+        s.feed_str("\x08\x08\x08\x08    ");
+
+        let c = s.contents();
+        assert!(!c.contains("typo"), "backspace-erased text remains: {c:?}");
     }
 }
