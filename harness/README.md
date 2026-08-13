@@ -48,6 +48,7 @@ the floor recorded in the test:
 | Verdict agreement | `passed` matches, whatever `detail` says | not recorded | 113 / 115 |
 | Panicked | the port took the process down | 5 | 0 |
 | Never returned | the port wedged on a deadline it could not reach | 1 | 0 |
+| Ran against a real child | the port drove a pseudo-terminal, as the oracle does | 0 / 115 | 28 / 115 |
 
 The two counts are separate floors on purpose. A fix that corrects a verdict and
 leaves the wording to a later commit moves the second and not the first, so it
@@ -66,20 +67,29 @@ layer — see "Known residual" below.
 **Does**: the step layer — argument coercion, validation order, timeout
 handling, regex dialect, and the exact `detail` string each step produces.
 
-**Does not**: terminal fidelity. Both halves run against a session with fixed
-content whose wait loops are transcribed from `termproof/session.py`, so screen
-rendering, scrollback and escape-sequence handling are out of frame. The PTY and
-screen layers have their own work.
+**Does not**: terminal fidelity, for the 87 cases the corpus marks `kind: stub`.
+Those run on both sides against a session with fixed content whose wait loops
+are transcribed from `termproof/session.py`, so screen rendering, scrollback and
+escape-sequence handling stay out of frame for them. The screen layer has its
+own work.
+
+**Does, since `PtySession` implements `Session`**: the write path of a real
+pseudo-terminal, for the 28 cases the corpus marks `kind: child`. Both halves now
+spawn `cat` on a pty and drive it, so `send_text`, `send_line` and `press` are
+compared terminal to terminal rather than terminal to double. The count is
+ratcheted alongside the agreement floors: routing those cases back to the stub
+fails the test.
 
 Three deliberate compromises, each of which inflates or deflates the number in a
 knowable direction:
 
-1. **`send_text`, `send_line` and `press` cases run against a real `pexpect`
-   child on the Python side.** A stub session that appends to a list records
-   `send_text {"text": 5}` as *passing*; only a real child reveals the failure.
-   The Rust side runs them against its in-memory session, so divergences in
-   these rows can belong to either the step layer or the session layer, and the
-   test's report attributes them.
+1. **`send_text`, `send_line` and `press` cases run against a real child on both
+   sides.** A stub session that appends to a list records `send_text
+   {"text": 5}` as *passing*; only a real child reveals the failure. The Python
+   half has always used one; the Rust half used its in-memory session until
+   `PtySession` implemented `Session`, so a divergence in these rows could
+   belong to either the step layer or the session layer. It can no longer: both
+   halves spawn a pty child, and a divergence is the port's.
 2. **`NaN`, `Infinity` and `-Infinity` cannot be written as JSON numbers.** The
    corpus spells them `"@nan"`, `"@inf"` and `"@-inf"`. Python's `json` module
    accepts bare `NaN` tokens and Rust's does not, so each half substitutes the
@@ -117,6 +127,10 @@ anything not named in it. That is `termproof-terminal`'s mapping rather than the
 step layer's (`specs/002-builtin-steps/spec.md` FR-016), and the shape the port
 should adopt is open as OQ-005, because `ctrl-1` produces a byte the oracle
 itself would not call meaningful.
+
+Both rows now run against a real pty child on both sides and still diverge, so
+the disagreement is the key table's and not an artefact of the port having
+replayed them against a double.
 
 ### One diagnostic the corpus says is missing
 

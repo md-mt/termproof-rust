@@ -25,7 +25,9 @@ use serde_json::{json, Value as JsonValue};
 
 use termproof_core::result::StepResult;
 use termproof_core::steps;
-use termproof_terminal::{InMemorySession, Session, SessionError};
+use termproof_terminal::{
+    InMemorySession, PtySessionBackend, Session, SessionBackend, SessionError,
+};
 
 /// The measurement, locked in as a ratchet. Raising the floor and lowering the
 /// ceilings is the point of the harness; moving either the other way is a
@@ -38,6 +40,11 @@ const AGREEMENT_FLOOR: usize = 82;
 /// verdict but leaves the wording to a later commit moves this and not the
 /// floor above, so it still has to move a number.
 const VERDICT_FLOOR: usize = 113;
+/// Cases the corpus asks to run against a real child, and that therefore must
+/// not quietly fall back to the stub. A third ratchet: the oracle drives a
+/// pseudo-terminal for these, so replaying them against a double would compare
+/// the port's step layer to the oracle's terminal.
+const CHILD_FLOOR: usize = 28;
 
 /// Wall-clock budget per case. The slowest legitimate case in the corpus waits
 /// three seconds; anything past this is not waiting, it is stuck.
@@ -180,24 +187,99 @@ fn expand_sentinels(value: &JsonValue) -> JsonValue {
     }
 }
 
+/// Which session a case runs against, as the corpus asked for.
+///
+/// The oracle runs `kind: child` cases against a real pseudo-terminal child
+/// and everything else against a stub. The port replayed all of them against
+/// the stub, because `PtySession` implemented no `Session` and so could not
+/// reach the step layer. It can now, so the child cases run against a child on
+/// both sides and the comparison is between two real terminals rather than
+/// between a real one and a double.
+enum Spec {
+    Stub {
+        screen: String,
+        raw: String,
+        alive: bool,
+    },
+    Child {
+        argv: Vec<String>,
+    },
+}
+
+impl Spec {
+    fn from_json(session: &JsonValue) -> Self {
+        if session["kind"].as_str() == Some("child") {
+            let argv = session["argv"]
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_else(|| vec!["cat".to_string()]);
+            return Spec::Child { argv };
+        }
+        Spec::Stub {
+            screen: session["screen"].as_str().unwrap_or("").to_string(),
+            raw: session["raw"].as_str().unwrap_or("").to_string(),
+            alive: session["alive"].as_bool().unwrap_or(true),
+        }
+    }
+
+    /// Build the session, or say why not.
+    ///
+    /// A child that will not spawn is an environment failure rather than a
+    /// finding, so it is reported as its own divergence line instead of being
+    /// scored against the oracle.
+    fn open(self) -> Result<Box<dyn Session>, SessionError> {
+        match self {
+            Spec::Stub { screen, raw, alive } => {
+                Ok(Box::new(HarnessSession::new(&screen, &raw, alive)))
+            }
+            // An empty cast path means "not recording": the corpus compares
+            // step results, and a recording would only add I/O to every case.
+            Spec::Child { argv } => PtySessionBackend::new().create_session(
+                argv,
+                PathBuf::new(),
+                None,
+                std::collections::HashMap::new(),
+                80,
+                24,
+            ),
+        }
+    }
+}
+
 /// What the port did with one case.
 enum Outcome {
     Returned(Box<StepResult>),
     Panicked(String),
     Stuck,
+    NoSession(String),
 }
 
-fn run_case(step: JsonValue, screen: String, raw: String, alive: bool, index: usize) -> Outcome {
+fn run_case(step: JsonValue, spec: Spec, index: usize) -> Outcome {
     let (tx, rx) = mpsc::channel();
     let spawned = std::thread::Builder::new().spawn(move || {
-        let mut session = HarnessSession::new(&screen, &raw, alive);
-        let _ = tx.send(steps::dispatch(&mut session, &step, index));
+        match spec.open() {
+            Ok(mut session) => {
+                let result = steps::dispatch(session.as_mut(), &step, index);
+                // `cat` outlives the step that wrote to it, and the corpus runs
+                // 28 of them. Close before reporting so they do not accumulate.
+                let _ = session.close();
+                let _ = tx.send(Outcome::Returned(Box::new(result)));
+            }
+            Err(e) => {
+                let _ = tx.send(Outcome::NoSession(e.to_string()));
+            }
+        }
     });
     // A thread that cannot be spawned is an environment failure, not a finding.
     spawned.expect("spawn case thread");
 
     match rx.recv_timeout(CASE_BUDGET) {
-        Ok(result) => Outcome::Returned(Box::new(result)),
+        Ok(outcome) => outcome,
         // The sender is dropped without sending only when the case panicked.
         Err(RecvTimeoutError::Disconnected) => Outcome::Panicked(
             LAST_PANIC
@@ -237,24 +319,31 @@ fn differential_steps_against_python() {
     let mut verdict_only = 0usize;
     let mut panicked = 0usize;
     let mut stuck = 0usize;
+    let mut unopened = 0usize;
+    let mut against_a_child = 0usize;
     let mut divergences: Vec<String> = Vec::new();
 
     for case in cases {
         let id = case["id"].as_str().unwrap_or("<unnamed>");
         let index = case["index"].as_u64().unwrap_or(1) as usize;
         let step = expand_sentinels(&case["step"]);
-        let session_spec = &case["session"];
-        let screen = session_spec["screen"].as_str().unwrap_or("").to_string();
-        let raw_output = session_spec["raw"].as_str().unwrap_or("").to_string();
-        let alive = session_spec["alive"].as_bool().unwrap_or(true);
+        let spec = Spec::from_json(&case["session"]);
+        if matches!(spec, Spec::Child { .. }) {
+            against_a_child += 1;
+        }
 
         let expected = &case["expected"];
         let want_name = expected["name"].as_str().unwrap_or("");
         let want_passed = expected["passed"].as_bool().unwrap_or(false);
         let want_detail = expected["detail"].as_str().unwrap_or("");
 
-        let result = match run_case(step, screen, raw_output, alive, index) {
+        let result = match run_case(step, spec, index) {
             Outcome::Returned(result) => result,
+            Outcome::NoSession(message) => {
+                unopened += 1;
+                divergences.push(format!("{id}:\n    rust:   no session: {message}"));
+                continue;
+            }
             Outcome::Panicked(message) => {
                 panicked += 1;
                 divergences.push(format!(
@@ -297,6 +386,8 @@ fn differential_steps_against_python() {
     println!("verdict agrees, detail differs:          {verdict_only}/{total}");
     println!("panics:                                  {panicked}/{total}");
     println!("did not return:                          {stuck}/{total}");
+    println!("session would not open:                  {unopened}/{total}");
+    println!("ran against a real pty child:            {against_a_child}/{total}");
     println!(
         "passed/failed verdict agreement:         {}/{total}",
         agreed + verdict_only
@@ -306,6 +397,11 @@ fn differential_steps_against_python() {
     // run. Both were non-zero when this file was written; neither may come back.
     assert_eq!(panicked, 0, "{panicked} cases panicked");
     assert_eq!(stuck, 0, "{stuck} cases never returned");
+    assert_eq!(unopened, 0, "{unopened} cases could not open their session");
+    assert!(
+        against_a_child >= CHILD_FLOOR,
+        "only {against_a_child} cases ran against a real child, below the recorded {CHILD_FLOOR}"
+    );
     assert!(
         agreed >= AGREEMENT_FLOOR,
         "agreement dropped to {agreed}/{total}, below the recorded floor of {AGREEMENT_FLOOR}"
