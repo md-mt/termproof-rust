@@ -40,6 +40,18 @@ pub enum ExecutionError {
     Timeout(String),
 }
 
+/// The recipe's declared assertions plus the implicit `expect_exit_code` one.
+///
+/// Shared by the two `evaluate_assertions*` default bodies so the assertion
+/// list cannot drift between the step-aware and step-blind paths.
+fn assertions_with_implicit(recipe: &Recipe) -> Vec<Value> {
+    let mut all = recipe.assertions.clone();
+    if let Some(expected) = recipe.expect_exit_code {
+        all.push(serde_json::json!({"type": "exit_code", "value": expected}));
+    }
+    all
+}
+
 /// Public context passed to execution modes.
 ///
 /// This is the only interface execution modes may use. It hides runner
@@ -74,6 +86,36 @@ pub trait ExecutionContext: Send {
         exit_code: Option<i32>,
     ) -> AssertionResult;
 
+    /// Evaluate a single assertion, with the screen captured after each step.
+    ///
+    /// This is the step-aware form of [`ExecutionContext::evaluate_assertion`].
+    /// `evaluate_assertion` only ever sees the final screen, so a state the
+    /// target passes through and then leaves — a palette that is opened and
+    /// then dismissed — is not expressible with it. `StepResult::screen`
+    /// already records the intermediate screens; this method is what carries
+    /// them to the assertion.
+    ///
+    /// The default body ignores `steps` and forwards to `evaluate_assertion`,
+    /// so an implementation written before this method existed keeps compiling
+    /// and keeps behaving identically. Overriding it is the opt-in.
+    ///
+    /// `steps` is `None` when the execution mode did not supply per-step
+    /// screens, which is not the same as an empty slice: an assertion that
+    /// needs them should report that they were unavailable rather than assume
+    /// no steps ran.
+    fn evaluate_assertion_with_steps(
+        &self,
+        recipe: &Recipe,
+        assertion: &Value,
+        screen: &str,
+        raw_output: &str,
+        exit_code: Option<i32>,
+        steps: Option<&[StepResult]>,
+    ) -> AssertionResult {
+        let _ = steps;
+        self.evaluate_assertion(recipe, assertion, screen, raw_output, exit_code)
+    }
+
     /// Evaluate all assertions (including implicit `expect_exit_code`).
     fn evaluate_assertions(
         &self,
@@ -82,12 +124,32 @@ pub trait ExecutionContext: Send {
         raw_output: &str,
         exit_code: Option<i32>,
     ) -> Vec<AssertionResult> {
-        let mut all = recipe.assertions.clone();
-        if let Some(expected) = recipe.expect_exit_code {
-            all.push(serde_json::json!({"type": "exit_code", "value": expected}));
-        }
-        all.iter()
+        assertions_with_implicit(recipe)
+            .iter()
             .map(|a| self.evaluate_assertion(recipe, a, screen, raw_output, exit_code))
+            .collect()
+    }
+
+    /// Evaluate all assertions, with the screen captured after each step.
+    ///
+    /// The step-aware form of [`ExecutionContext::evaluate_assertions`]; it
+    /// assembles the same assertion list and routes each one through
+    /// [`ExecutionContext::evaluate_assertion_with_steps`]. An implementation
+    /// that overrides `evaluate_assertions` and wants the override to apply on
+    /// this path must override this method too.
+    fn evaluate_assertions_with_steps(
+        &self,
+        recipe: &Recipe,
+        screen: &str,
+        raw_output: &str,
+        exit_code: Option<i32>,
+        steps: Option<&[StepResult]>,
+    ) -> Vec<AssertionResult> {
+        assertions_with_implicit(recipe)
+            .iter()
+            .map(|a| {
+                self.evaluate_assertion_with_steps(recipe, a, screen, raw_output, exit_code, steps)
+            })
             .collect()
     }
 
@@ -162,7 +224,13 @@ impl ExecutionMode for ScriptedPtyMode {
         let raw_output = session.raw_output().to_string();
         let exit_code = session.exit_code();
         let screen = session.screen().to_string();
-        let assertions = ctx.evaluate_assertions(recipe, &screen, &raw_output, exit_code);
+        let assertions = ctx.evaluate_assertions_with_steps(
+            recipe,
+            &screen,
+            &raw_output,
+            exit_code,
+            Some(&steps),
+        );
         let _ = session.close();
         Ok((steps, assertions, raw_output, exit_code, screen))
     }
@@ -204,7 +272,13 @@ impl ExecutionMode for ScriptedProcessMode {
         let raw_output = session.raw_output().to_string();
         let exit_code = session.exit_code();
         let screen = session.screen().to_string();
-        let assertions = ctx.evaluate_assertions(recipe, &screen, &raw_output, exit_code);
+        let assertions = ctx.evaluate_assertions_with_steps(
+            recipe,
+            &screen,
+            &raw_output,
+            exit_code,
+            Some(&steps),
+        );
         let _ = session.close();
         Ok((steps, assertions, raw_output, exit_code, screen))
     }
