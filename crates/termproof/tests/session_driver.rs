@@ -28,6 +28,8 @@ struct Scripted {
     last_idle: Option<(Duration, Duration)>,
     /// Timeout the last `wait_for_text` was given.
     last_text_timeout: Option<Duration>,
+    /// Timeout the last `wait_for_exit` was given.
+    last_exit_timeout: Option<Duration>,
 }
 
 impl Scripted {
@@ -44,6 +46,7 @@ impl Scripted {
             ran: Vec::new(),
             last_idle: None,
             last_text_timeout: None,
+            last_exit_timeout: None,
         }
     }
 
@@ -100,6 +103,7 @@ impl Session for Scripted {
 
     fn wait_for_exit(&mut self, timeout: Duration) -> Result<Option<i32>, SessionError> {
         self.enter("wait_for_exit")?;
+        self.last_exit_timeout = Some(timeout);
         if !self.holds("wait_for_exit") {
             return Ok(None);
         }
@@ -180,6 +184,10 @@ mod shared {
 
         pub fn last_text_timeout(&self) -> Option<Duration> {
             self.0.lock().expect("recorder poisoned").last_text_timeout
+        }
+
+        pub fn last_exit_timeout(&self) -> Option<Duration> {
+            self.0.lock().expect("recorder poisoned").last_exit_timeout
         }
     }
 
@@ -350,6 +358,24 @@ fn set_timeouts_changes_later_calls() {
 }
 
 #[test]
+fn the_exit_default_matches_the_recipe_timeout_not_the_other_waits() {
+    // `ScriptedPtyMode` waits the whole recipe timeout for an exit when a
+    // recipe declares `expect_exit_code`, and that default is 30s. Ten
+    // seconds here would time out a ported scenario 20s early.
+    assert_eq!(DriverTimeouts::default().exit, Duration::from_secs(30));
+    assert_ne!(
+        DriverTimeouts::default().exit,
+        DriverTimeouts::default().idle,
+        "deliberately not the 10s the screen waits use"
+    );
+
+    // And it is the value that actually reaches the session.
+    let (mut d, rec) = recorded(Scripted::new());
+    d.wait_for_exit();
+    assert_eq!(rec.last_exit_timeout(), Some(Duration::from_secs(30)));
+}
+
+#[test]
 fn wait_for_text_uses_the_default_text_timeout() {
     let (mut d, rec) = recorded(Scripted::new());
     d.send_text("hello").wait_for_text("hello");
@@ -381,6 +407,40 @@ fn expect_screen_contains_attaches_the_screen() {
         "attaches the screen: {rendered}"
     );
     assert!(matches!(err, DriverError::Expectation { .. }));
+}
+
+#[test]
+fn a_positive_expectation_says_the_text_is_absent() {
+    let mut d = driver();
+    d.send_text("actual contents");
+    let rendered = d
+        .expect_screen_contains("missing")
+        .expect_err("text is absent")
+        .to_string();
+    assert!(
+        rendered.contains(r#"expected the screen to contain "missing", but it is absent"#),
+        "{rendered}"
+    );
+}
+
+#[test]
+fn a_negative_expectation_says_the_text_is_present() {
+    // The failure is that "boom" *is* on screen. A message ending "but it was
+    // not present" would state the opposite of what happened.
+    let mut d = driver();
+    d.send_text("boom");
+    let rendered = d
+        .expect_screen_lacks("boom")
+        .expect_err("text is present")
+        .to_string();
+    assert!(
+        rendered.contains(r#"expected the screen not to contain "boom", but it is present"#),
+        "{rendered}"
+    );
+    assert!(
+        !rendered.contains("not present"),
+        "must not claim the opposite of what happened: {rendered}"
+    );
 }
 
 #[test]
@@ -490,6 +550,32 @@ fn an_expectation_reports_the_keystroke_not_the_missing_text() {
         "blames the send, not the assertion: {err}"
     );
     assert!(err.op().starts_with("send_text"));
+}
+
+#[test]
+fn the_ordinal_counts_calls_that_were_skipped() {
+    // Fail on call 1, skip calls 2 and 3, clear, then fail on call 4. The
+    // ordinal names a position in the scenario, so the skipped calls must
+    // still consume their numbers — otherwise this reports #2.
+    let mut inner = Scripted::new();
+    inner.fail_on.push("send_text");
+    let (mut d, _rec) = recorded(inner);
+
+    d.send_text("one"); // #1 — fails
+    d.press("enter"); // #2 — skipped
+    d.press("tab"); // #3 — skipped
+    assert!(matches!(
+        d.clear_failure(),
+        Some(DriverError::Session { call: 1, .. })
+    ));
+
+    d.send_text("four"); // #4 — fails again
+    let err = d.check().expect_err("the second send_text failed too");
+    assert!(
+        matches!(err, DriverError::Session { call: 4, .. }),
+        "skipped calls must keep their numbers, got {err}"
+    );
+    assert!(err.to_string().contains("#4"), "{err}");
 }
 
 #[test]
@@ -607,6 +693,42 @@ fn control_characters_in_a_label_are_escaped() {
     let op = d.check().expect_err("failed").op().to_string();
     assert_eq!(op, r#"send_text("a\nb\tc")"#);
     assert!(!op.contains('\n'), "the label stays on one line");
+}
+
+#[test]
+fn a_backslash_is_escaped_so_it_cannot_forge_an_escape() {
+    // Two literal characters, backslash and 'n'. Unescaped, the label renders
+    // as `"\n"` — indistinguishable from an actual newline.
+    let (mut d, _rec) = recorded(Scripted::failing("send_text"));
+    d.send_text(r"a\nb");
+
+    let op = d.check().expect_err("failed").op().to_string();
+    assert_eq!(op, r#"send_text("a\\nb")"#);
+
+    // The real newline renders differently, which is the whole point.
+    let (mut real, _rec) = recorded(Scripted::failing("send_text"));
+    real.send_text("a\nb");
+    let newline_op = real.check().expect_err("failed").op().to_string();
+    assert_eq!(newline_op, r#"send_text("a\nb")"#);
+    assert_ne!(op, newline_op, "the two must not render identically");
+}
+
+#[test]
+fn escape_and_other_control_characters_do_not_reach_the_terminal() {
+    // A terminal library's labels are full of escape sequences, and the label
+    // gets printed to a terminal. A raw ESC would let the payload repaint the
+    // report describing it.
+    let (mut d, _rec) = recorded(Scripted::failing("send_text"));
+    d.send_text("a\x1b[31mred\x07\0b");
+
+    let op = d.check().expect_err("failed").op().to_string();
+    assert_eq!(op, r#"send_text("a\u{1b}[31mred\u{07}\u{00}b")"#);
+    assert!(!op.contains('\x1b'), "no raw ESC survives: {op:?}");
+    assert!(!op.contains('\x07'), "no raw BEL survives: {op:?}");
+    assert!(
+        !op.chars().any(char::is_control),
+        "no control character survives: {op:?}"
+    );
 }
 
 #[test]

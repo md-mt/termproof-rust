@@ -50,6 +50,7 @@
 //! assertion result without either surfacing the failure or clearing it on
 //! purpose with [`SessionDriver::clear_failure`].
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -107,10 +108,14 @@ pub enum DriverError {
     /// Produced by [`SessionDriver::expect_screen_contains`] and friends, not
     /// deferred: this is the assertion itself failing, with no earlier failure
     /// to blame.
-    #[error("expected {what}, but it was not present\n--- screen ---\n{screen}\n--------------")]
+    #[error("{expectation}\n--- screen ---\n{screen}\n--------------")]
     Expectation {
-        /// What was expected, phrased for a reader.
-        what: String,
+        /// What failed, as a complete sentence.
+        ///
+        /// A whole sentence rather than a noun phrase with a fixed suffix,
+        /// because the suffix cannot be right for both polarities: a negative
+        /// expectation fails precisely *because* the text was present.
+        expectation: String,
         /// The screen at the moment the expectation was evaluated.
         screen: String,
     },
@@ -120,11 +125,13 @@ impl DriverError {
     /// The label of the operation this error is about.
     ///
     /// For a deferred failure this is the call that *first* went wrong, which
-    /// is generally not the call the caller was making when it found out.
+    /// is generally not the call the caller was making when it found out. For
+    /// an [`Expectation`](Self::Expectation), which has no operation behind
+    /// it, this is the expectation sentence.
     pub fn op(&self) -> &str {
         match self {
             Self::Session { op, .. } | Self::Unsatisfied { op, .. } => op,
-            Self::Expectation { what, .. } => what,
+            Self::Expectation { expectation, .. } => expectation,
         }
     }
 
@@ -141,9 +148,11 @@ impl DriverError {
 
 /// Default timeouts applied by a [`SessionDriver`] when a call is given none.
 ///
-/// The values are the ones the built-in steps already use, so a scenario
-/// written against the driver waits exactly as long as the equivalent recipe
-/// step would. They are not new policy.
+/// Each value is taken from the existing recipe path rather than invented, so
+/// a scenario written against the driver waits as long as the equivalent
+/// recipe would. That means matching whichever part of the recipe path
+/// actually governs the wait, which is not the same source for every field —
+/// see each one. They are not new policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DriverTimeouts {
     /// How long the screen must hold still before it counts as idle.
@@ -163,12 +172,17 @@ pub struct DriverTimeouts {
 
     /// How long to wait for the child to exit.
     ///
-    /// Default: 10s, for consistency with the other waits.
+    /// Default: 30s — deliberately not the 10s the other waits use. The
+    /// closest recipe equivalent is the implicit exit wait `ScriptedPtyMode`
+    /// performs for `expect_exit_code`, and that waits the whole recipe
+    /// timeout, whose default is 30s. Matching the recipe matters more here
+    /// than matching the neighbouring fields: a scenario ported from a recipe
+    /// should not start timing out 20s earlier than the recipe did.
     pub exit: Duration,
 
-    /// How long a non-blocking drain may block for.
+    /// How long a drain of already-available output may block for.
     ///
-    /// Default: 3s, matching the post-script drain in `ScriptedPtyMode`.
+    /// Default: 3s, the cap `ScriptedPtyMode` puts on its post-script quiesce.
     pub read: Duration,
 }
 
@@ -178,7 +192,7 @@ impl Default for DriverTimeouts {
             stable: Duration::from_millis(500),
             idle: Duration::from_secs(10),
             text: Duration::from_secs(10),
-            exit: Duration::from_secs(10),
+            exit: Duration::from_secs(30),
             read: Duration::from_secs(3),
         }
     }
@@ -277,6 +291,10 @@ impl SessionDriver {
     /// probing something it expects to fail. Without this the first failure
     /// would be terminal, which is the right default and the wrong only
     /// option.
+    ///
+    /// The call counter is not reset: the calls that were skipped while the
+    /// driver was failed still consumed their numbers, so a later failure's
+    /// ordinal keeps pointing at the right place in the scenario.
     pub fn clear_failure(&mut self) -> Option<DriverError> {
         self.failure.take()
     }
@@ -298,10 +316,12 @@ impl SessionDriver {
     where
         F: FnOnce(&mut dyn Session) -> Result<(), SessionError>,
     {
+        // Counted before the early return, so the ordinal stays the position
+        // of the call in the scenario. A no-op call still consumes its number.
+        self.calls += 1;
         if self.failure.is_some() {
             return self;
         }
-        self.calls += 1;
         let call = self.calls;
         if let Err(cause) = f(self.session.as_mut()) {
             self.fail(DriverError::Session {
@@ -319,10 +339,11 @@ impl SessionDriver {
     where
         F: FnOnce(&mut dyn Session) -> Result<bool, SessionError>,
     {
+        // Counted before the early return — see `drive`.
+        self.calls += 1;
         if self.failure.is_some() {
             return self;
         }
-        self.calls += 1;
         let call = self.calls;
         match f(self.session.as_mut()) {
             Ok(true) => {}
@@ -502,7 +523,10 @@ impl SessionDriver {
             return Ok(());
         }
         Err(DriverError::Expectation {
-            what: format!("screen to contain {}", quoted(needle)),
+            expectation: format!(
+                "expected the screen to contain {}, but it is absent",
+                quoted(needle)
+            ),
             screen: screen.to_string(),
         })
     }
@@ -514,7 +538,10 @@ impl SessionDriver {
             return Ok(());
         }
         Err(DriverError::Expectation {
-            what: format!("screen not to contain {}", quoted(needle)),
+            expectation: format!(
+                "expected the screen not to contain {}, but it is present",
+                quoted(needle)
+            ),
             screen: screen.to_string(),
         })
     }
@@ -563,6 +590,13 @@ impl SessionDriver {
 
 /// Quote and elide, counting characters rather than bytes so the cap cannot
 /// split a multi-byte character.
+///
+/// Escaping is total over control characters, which matters more here than in
+/// most label code: this is a terminal library, so the text being labelled is
+/// routinely full of escape sequences, and the label is routinely printed
+/// straight to a terminal. An unescaped `ESC` would let a failing scenario's
+/// own payload repaint the report that describes it. Backslash is escaped
+/// first, so `\n` typed as two characters cannot be confused with a newline.
 fn quoted(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
@@ -572,11 +606,17 @@ fn quoted(text: &str) -> String {
             break;
         }
         match ch {
+            '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             '"' => out.push_str("\\\""),
-            _ => out.push(ch),
+            // Everything else in Unicode category Cc — ESC, BEL, NUL, DEL and
+            // the C1 range — rendered as an unambiguous escape.
+            c if c.is_control() => {
+                let _ = write!(out, "\\u{{{:02x}}}", c as u32);
+            }
+            c => out.push(c),
         }
     }
     out.push('"');
