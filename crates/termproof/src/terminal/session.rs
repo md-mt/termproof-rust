@@ -106,9 +106,16 @@ pub trait Session: Send {
     /// ([`crate::terminal::InMemorySession`], the Docker stub), and for a
     /// backend that can see the child was moved somewhere but not where.
     ///
-    /// A borrow, because every backend already holds this path. The live
-    /// directory would not fit the shape: reading one means asking the OS or
-    /// the multiplexer, and that answer is owned.
+    /// A borrow, because this is cached launch state: a backend resolves the
+    /// directory once, when the child starts, and holds it for the life of the
+    /// session. Caching it is not a concession to the return type, it is the
+    /// only way to be right — the inputs (our own directory, whether a
+    /// configured path exists) can move afterwards, so an answer computed on
+    /// demand would drift away from where the child actually is.
+    ///
+    /// A *live* directory is the thing that would not fit this shape: reading
+    /// one means asking the OS or the multiplexer per call, and that answer is
+    /// owned. It belongs in a separate method if it is ever wanted.
     fn cwd(&self) -> Option<&std::path::Path> {
         None
     }
