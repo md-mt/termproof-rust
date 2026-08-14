@@ -3,6 +3,7 @@
 pub mod agent;
 pub mod assertions;
 pub mod build_info;
+pub mod before_after;
 pub mod cache;
 pub mod config;
 pub mod error;
@@ -16,6 +17,7 @@ pub mod pyrepr;
 pub mod pyschema;
 pub mod recipe;
 pub mod result;
+pub mod run_config;
 pub mod runner;
 pub mod schema;
 pub mod selection;

@@ -4,6 +4,7 @@
 pub mod diff;
 pub mod render;
 pub mod report;
+pub mod uploader;
 pub mod video;
 
 pub use diff::apply_visual_diff;
