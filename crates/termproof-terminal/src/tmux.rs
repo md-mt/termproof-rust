@@ -141,6 +141,16 @@ impl TmuxSession {
         self.screen = self.capture(false);
         self.raw = self.capture(true);
     }
+
+    /// The part of the captured screen that can actually settle.
+    ///
+    /// Drops the last two rows: the tmux status line and the cursor row change
+    /// on their own and would never let the screen look stable.
+    fn settled_body(&self) -> String {
+        let lines: Vec<&str> = self.screen.lines().collect();
+        let keep = lines.len().saturating_sub(2);
+        lines[..keep].join("\n")
+    }
 }
 
 impl Session for TmuxSession {
@@ -185,30 +195,27 @@ impl Session for TmuxSession {
 
     fn wait_for_idle(&mut self, stable: Duration, timeout: Duration) -> Result<bool, SessionError> {
         let deadline = Instant::now() + timeout;
-        let mut previous = String::new();
-        let mut steady = Duration::ZERO;
+        self.refresh();
+        let mut previous = self.settled_body();
+        // Measure against the clock, not a count of polls. Adding POLL_SECONDS
+        // per match credits an interval that has not elapsed yet, so a screen
+        // that matches on the very first look satisfies any `stable` shorter
+        // than one poll without having waited at all.
+        let mut stable_since = Instant::now();
         loop {
-            self.refresh();
-            // Drop the last two rows: the tmux status line and the cursor row
-            // change on their own and would never let the screen look settled.
-            let body: String = {
-                let lines: Vec<&str> = self.screen.lines().collect();
-                let keep = lines.len().saturating_sub(2);
-                lines[..keep].join("\n")
-            };
-            if body == previous {
-                steady += Duration::from_secs_f64(POLL_SECONDS);
-                if steady >= stable {
-                    return Ok(true);
-                }
-            } else {
-                steady = Duration::ZERO;
-                previous = body;
+            if stable_since.elapsed() >= stable {
+                return Ok(true);
             }
             if Instant::now() >= deadline {
                 return Ok(false);
             }
             sleep_secs(POLL_SECONDS);
+            self.refresh();
+            let body = self.settled_body();
+            if body != previous {
+                previous = body;
+                stable_since = Instant::now();
+            }
         }
     }
 
@@ -518,6 +525,48 @@ mod tests {
             panic!("empty argv should be refused");
         };
         assert!(matches!(err, SessionError::Config(_)), "{err:?}");
+    }
+
+    /// A session whose socket does not exist: every `tmux` call fails, so each
+    /// capture reads as an empty screen. That is the cheapest way to hold the
+    /// screen perfectly still and time what `wait_for_idle` does about it.
+    fn unreachable_session(dir: &Path) -> TmuxSession {
+        TmuxSession {
+            socket: dir.join("absent.sock").to_string_lossy().to_string(),
+            argv: vec!["/bin/true".to_string()],
+            cast_path: dir.join("s.cast"),
+            cols: 80,
+            rows: 24,
+            exit_code: None,
+            // Already closed, so `Drop` does not try to kill a server that was
+            // never started.
+            closed: true,
+            screen: String::new(),
+            raw: String::new(),
+        }
+    }
+
+    #[test]
+    fn idle_waits_out_the_stable_window_rather_than_counting_polls() {
+        // Counting `steady += POLL_SECONDS` per matching poll credits an
+        // interval that has not elapsed. A screen that matches on the first
+        // look then reports "stable for half a second" immediately, and a step
+        // that asked to see the screen hold still gets no wait at all.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut session = unreachable_session(dir.path());
+        let stable = Duration::from_millis(400);
+
+        let started = Instant::now();
+        let idle = session
+            .wait_for_idle(stable, Duration::from_secs(10))
+            .expect("no error");
+
+        assert!(idle, "an unchanging screen is idle");
+        assert!(
+            started.elapsed() >= stable,
+            "returned after {:?}, less than the {stable:?} it was asked to wait",
+            started.elapsed()
+        );
     }
 
     #[test]
