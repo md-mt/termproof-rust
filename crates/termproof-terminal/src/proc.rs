@@ -6,6 +6,7 @@
 //! failure.
 
 use std::io;
+use std::io::Read;
 use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
@@ -51,11 +52,35 @@ pub fn run_capturing_timeout(mut cmd: Command, timeout: Duration) -> io::Result<
         .stderr(Stdio::piped());
     let mut child = cmd.spawn()?;
 
+    // Drain both pipes on their own threads, starting now rather than after
+    // the wait loop. A pipe holds about one buffer's worth (64 KiB is typical,
+    // less on some platforms); past that the child blocks in write() until
+    // someone reads. Reading only after the loop would therefore make any
+    // child that produces more than a bufferful look exactly like a hang, and
+    // it would be killed at the deadline no matter how fast it really was.
+    // `ffmpeg` encoding a few hundred frames clears that in stderr alone.
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
+    let drain_stdout = thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(pipe) = stdout_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+    let drain_stderr = thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(pipe) = stderr_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut buf);
+        }
+        buf
+    });
+
     // Poll with try_wait() instead of a separate watchdog thread signaling by
-    // raw pid: once the child is reaped (wait_with_output below), its pid can
-    // be recycled by the kernel, so a thread still holding that pid would risk
-    // killing an unrelated process. try_wait() only ever acts on the live
-    // Child handle we own, and we never touch it again after reaping.
+    // raw pid: once the child is reaped (wait() below), its pid can be recycled
+    // by the kernel, so a thread still holding that pid would risk killing an
+    // unrelated process. try_wait() only ever acts on the live Child handle we
+    // own, and we never touch it again after reaping.
     let step = Duration::from_millis(50);
     let mut waited = Duration::ZERO;
     let timed_out = loop {
@@ -70,7 +95,14 @@ pub fn run_capturing_timeout(mut cmd: Command, timeout: Duration) -> io::Result<
         waited += step;
     };
 
-    let output = child.wait_with_output()?;
+    // Killing the child closes its ends of the pipes, so both readers finish
+    // either way and a timed-out run still yields whatever it managed to emit.
+    let status = child.wait()?;
+    let output = Output {
+        status,
+        stdout: drain_stdout.join().unwrap_or_default(),
+        stderr: drain_stderr.join().unwrap_or_default(),
+    };
     Ok((output, timed_out))
 }
 
@@ -110,6 +142,27 @@ mod tests {
         cmd.arg("hi");
         let out = run_with_timeout(cmd, Duration::from_secs(5)).unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
+    }
+
+    #[test]
+    fn output_larger_than_a_pipe_buffer_does_not_look_like_a_hang() {
+        // A pipe drained only after the wait loop fills at ~64 KiB and blocks
+        // the child, which then gets killed at the deadline. 1 MB is well past
+        // that on every platform, and 5s is far longer than `head` needs.
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("yes hello | head -c 1000000");
+        let out = run_with_timeout(cmd, Duration::from_secs(5)).expect("should not time out");
+        assert_eq!(out.stdout.len(), 1_000_000);
+    }
+
+    #[test]
+    fn a_timed_out_run_still_yields_what_it_printed() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg("echo partial; sleep 10");
+        let (output, timed_out) =
+            run_capturing_timeout(cmd, Duration::from_millis(300)).expect("spawned");
+        assert!(timed_out);
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "partial");
     }
 
     #[test]
