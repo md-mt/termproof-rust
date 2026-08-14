@@ -163,13 +163,19 @@ their checker scripts) that only ever existed on `wt/rust-003-ci-gates`.
 
 ## Publishing
 
-None of the five crates has been published to crates.io yet. They are ready to
-be: metadata is complete, internal dependencies carry versions, each crate has
-its own README and licence file, and `cargo publish --dry-run --workspace`
-verifies every package by building it from its own tarball. The publish order,
-the version-bump rule and the pre-release checklist are in
-[`docs/publishing.md`](docs/publishing.md). Publishing itself is a deliberate
-manual step — a crates.io name is a one-way door.
+Nothing has been published to crates.io yet. Three crates are in scope when it
+happens — `termproof-terminal`, `termproof-core` and `termproof-evidence`.
+`termproof-cli` and `termproof-plugin-protocol` carry `publish = false` on
+purpose; a crates.io name is a one-way door, and those two are not ready to
+spend one.
+
+Releases go out through `.github/workflows/publish-crates.yml`, triggered by
+publishing a GitHub release. It derives the publish set and order from
+`cargo metadata` rather than from a list anyone has to maintain, refuses a tag
+that disagrees with the workspace version, gates on the full test suite, and is
+safe to re-run after a partial failure. The order, the tag format, the
+version-bump rule and the pre-release checklist are in
+[`docs/publishing.md`](docs/publishing.md).
 
 ## Licence
 

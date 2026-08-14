@@ -1,0 +1,125 @@
+# Publishes this workspace's crates to crates.io when a GitHub release is
+# published. Nothing else in this repository uploads to a registry.
+#
+# The publish set and its order are derived at run time from `cargo metadata`
+# by .github/scripts/publish-plan.py: the crates whose `publish` is not false,
+# topologically ordered. Holding a crate back, adding one, or merging several
+# into one is a manifest change, and this workflow follows it without an edit.
+# Nothing here names a crate.
+#
+# Only a published GitHub release uploads anything. `workflow_dispatch` and
+# `pull_request` runs are always dry runs — there is no input to flip, so this
+# workflow cannot be hand-triggered into publishing. To retry a release that
+# failed partway, re-run this workflow from the release; the publish step is
+# idempotent and will skip what already landed.
+#
+# See docs/publishing.md.
+name: Publish (crates.io)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-crates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      order: ${{ steps.plan.outputs.order }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+
+      - name: Derive the publish set and order
+        id: plan
+        run: |
+          PLAN="$(.github/scripts/publish-plan.py)"
+          VERSION="$(jq -r .version <<<"$PLAN")"
+          ORDER="$(jq -r '.order | join(" ")' <<<"$PLAN")"
+          HELD="$(jq -r '.held | join(" ")' <<<"$PLAN")"
+          {
+            echo "version=$VERSION"
+            echo "order=$ORDER"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Publish plan"
+            echo
+            echo "- Version: \`$VERSION\`"
+            echo "- Order: \`${ORDER:-(none)}\`"
+            echo "- Held back (\`publish = false\`): \`${HELD:-(none)}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A tag and a manifest that disagree is the commonest way a release goes
+      # out mislabelled, and it is the cheapest thing to check — so it runs
+      # before the test suite, not after it. The required format is `v<version>`
+      # because release-rust.yml already triggers on `v*.*.*`; accepting a bare
+      # `0.2.1` too would let a tag exist that publishes crates but never builds
+      # the binaries, which is a worse outcome than a rejected tag.
+      - name: Refuse a tag that disagrees with the manifest
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::release tag '$TAG' does not match the workspace version '$VERSION' — expected 'v$VERSION'. Fix the tag, or bump the version in Cargo.toml and re-cut the release."
+            exit 1
+          fi
+          echo "tag '$TAG' matches workspace version '$VERSION'"
+
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt --check --all
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: test
+        run: cargo test --workspace
+      - name: build
+        run: cargo build --workspace --release
+
+  publish:
+    name: ${{ github.event_name == 'release' && 'Publish' || 'Dry run' }}
+    needs: [plan, gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+
+      # Verifies every publishable package by building it from its own tarball,
+      # with the not-yet-published ones overlaid in a temporary local registry.
+      # `--workspace` skips `publish = false` crates on its own. This is what
+      # runs on pull requests, so the workflow is exercised before a release
+      # depends on it.
+      - name: Dry run
+        if: github.event_name != 'release'
+        run: cargo publish --dry-run --workspace
+
+      - name: Publish
+        if: github.event_name == 'release'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          ORDER: ${{ needs.plan.outputs.order }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: .github/scripts/publish.sh
