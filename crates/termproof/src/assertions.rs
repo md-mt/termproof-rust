@@ -41,6 +41,23 @@ use crate::pyrepr::{repr_json, repr_str, str_json, type_name};
 #[cfg(feature = "json-schema")]
 use crate::pyschema;
 
+/// The built-ins that need no optional dependency, in the order the config
+/// declares them.
+///
+/// The single source for both shapes of [`BUILTIN_TYPES`]. Writing the list
+/// once is what makes "the same names minus `json_schema`" a fact the compiler
+/// carries rather than a convention two literals have to keep: an eighth
+/// unconditional built-in is added here, and both shapes gain it.
+const UNCONDITIONAL_TYPES: [&str; 7] = [
+    "output_contains",
+    "output_not_contains",
+    "screen_contains",
+    "screen_not_contains",
+    "exit_code",
+    "file_exists",
+    "file_contains",
+];
+
 /// The assertion types this crate answers for, in the order the config
 /// declares them.
 ///
@@ -48,36 +65,25 @@ use crate::pyschema;
 /// so a plugin type can be added without editing the dispatcher. This is that
 /// registry's built-in half; [`dispatch`] consults it by name.
 ///
-/// The list is what is actually dispatchable, so without the `json-schema`
-/// feature it is the same seven names minus `json_schema`. The array length is
-/// the assertion that the two stay in step.
+/// The list is what is actually dispatchable: [`UNCONDITIONAL_TYPES`], and
+/// `json_schema` when the `json-schema` feature compiles something that can
+/// answer it.
 #[cfg(feature = "json-schema")]
-pub const BUILTIN_TYPES: [&str; 8] = [
-    "output_contains",
-    "output_not_contains",
-    "screen_contains",
-    "screen_not_contains",
-    "exit_code",
-    "file_exists",
-    "file_contains",
-    "json_schema",
-];
+pub const BUILTIN_TYPES: [&str; 8] = {
+    let mut all = [""; 8];
+    let mut i = 0;
+    while i < UNCONDITIONAL_TYPES.len() {
+        all[i] = UNCONDITIONAL_TYPES[i];
+        i += 1;
+    }
+    all[i] = "json_schema";
+    all
+};
 
-/// The assertion types this crate answers for, in the order the config
-/// declares them.
-///
-/// This is the list without the `json-schema` feature: the same seven, and no
-/// `json_schema`, because nothing is compiled that could answer it.
+/// The assertion types this crate answers for, without the `json-schema`
+/// feature: [`UNCONDITIONAL_TYPES`] exactly, since nothing else is compiled.
 #[cfg(not(feature = "json-schema"))]
-pub const BUILTIN_TYPES: [&str; 7] = [
-    "output_contains",
-    "output_not_contains",
-    "screen_contains",
-    "screen_not_contains",
-    "exit_code",
-    "file_exists",
-    "file_contains",
-];
+pub const BUILTIN_TYPES: [&str; 7] = UNCONDITIONAL_TYPES;
 
 /// The assertions a recipe evaluates, in order (FR-019).
 ///
@@ -897,6 +903,32 @@ mod tests {
                 !result.detail.starts_with("unknown assertion type"),
                 "{name} is not dispatched"
             );
+        }
+    }
+
+    /// `BUILTIN_TYPES` is derived from `UNCONDITIONAL_TYPES`, so the compiler
+    /// already carries "the same names minus `json_schema`". What it cannot
+    /// carry is that the *dispatcher* agrees, since a match arm is not a value.
+    /// `json_schema` is the one name whose presence varies, so this pins the
+    /// registry, the dispatcher and the feature to each other at that point —
+    /// in both directions, and in whichever shape is compiled.
+    #[test]
+    fn json_schema_is_dispatchable_exactly_when_the_registry_lists_it() {
+        let listed = BUILTIN_TYPES.contains(&"json_schema");
+        let detail = eval(json!({"type": "json_schema"}), "", "", None).detail;
+        let dispatched = !detail.starts_with("unknown assertion type");
+
+        assert_eq!(
+            listed, dispatched,
+            "registry says {listed}, dispatcher says {dispatched}"
+        );
+        assert_eq!(listed, cfg!(feature = "json-schema"));
+        assert_eq!(
+            BUILTIN_TYPES.len(),
+            UNCONDITIONAL_TYPES.len() + usize::from(listed)
+        );
+        for name in UNCONDITIONAL_TYPES {
+            assert!(BUILTIN_TYPES.contains(&name), "{name} was dropped");
         }
     }
 }

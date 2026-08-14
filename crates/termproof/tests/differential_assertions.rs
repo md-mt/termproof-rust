@@ -21,13 +21,14 @@
 //! cargo test -p termproof --test differential_assertions -- --nocapture
 //! ```
 //!
-//! Fifty-eight of the 147 cases are `json_schema`, and the oracle they were
+//! Fifty-eight of the 165 cases are `json_schema`, and the oracle they were
 //! recorded from always has a JSON Schema validator. Without the `json-schema`
-//! feature the port cannot answer them, so the harness would be measuring the
-//! absence of a feature rather than a parity gap — it needs the feature to say
-//! anything, and is compiled out without it.
-
-#![cfg(feature = "json-schema")]
+//! feature the port cannot answer those, so they are skipped by type — and only
+//! those. The harness itself always compiles and always runs: the other 107
+//! cases are the same parity evidence whatever the feature does, and a feature
+//! combination must not be able to drop them and still look green. The skipped
+//! count is asserted exactly, so a build that skips more or fewer than it should
+//! fails rather than quietly measuring less.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -42,13 +43,40 @@ use termproof::models::{AssertionResult, CommandSpec, Recipe};
 /// The measurement, locked in as a ratchet. Raising the floor is the point of
 /// the harness; lowering it is a regression and needs saying out loud in the
 /// change that does it.
+///
+/// There is a floor per feature shape because there is a corpus per feature
+/// shape. Without `json-schema` the 58 `json_schema` cases cannot be answered
+/// and are skipped, so measuring the remainder against the full-corpus floor
+/// would fail for a reason that is not a regression.
+#[cfg(feature = "json-schema")]
 const AGREEMENT_FLOOR: usize = 124;
 /// Cases agreeing on pass/fail, whatever the detail says. A fix that corrects a
 /// verdict but leaves the wording to a later commit moves this and not the
 /// floor above, so it still has to move a number.
+#[cfg(feature = "json-schema")]
 const VERDICT_FLOOR: usize = 143;
+/// The 89 comparable cases that need no JSON Schema validator. Same ratchet,
+/// same meaning, over the corpus this build can actually answer.
+#[cfg(not(feature = "json-schema"))]
+const AGREEMENT_FLOOR: usize = 89;
+#[cfg(not(feature = "json-schema"))]
+const VERDICT_FLOOR: usize = 89;
+
+/// Cases skipped because this build has no validator for them, asserted exactly
+/// rather than ratcheted. A build that skips a case it could have answered is
+/// measuring less than it claims, and so is one that skips none when it should
+/// skip 58 — both fail here.
+#[cfg(feature = "json-schema")]
+const SKIPPED_EXACT: usize = 0;
+#[cfg(not(feature = "json-schema"))]
+const SKIPPED_EXACT: usize = 58;
+
 /// Cases the oracle cannot answer because they end its run. FR-020 requires the
 /// port to contain every one, so this is asserted exactly rather than ratcheted.
+///
+/// It does not vary by feature: none of the 18 is a `json_schema` case. That is
+/// not an assumption, it is enforced — skipping one would drop `contained`
+/// below this number and fail.
 const CONTAINED_EXACT: usize = 18;
 
 /// Wall-clock budget per case. Every case is a pure function of its inputs plus
@@ -261,12 +289,24 @@ fn differential_assertions_against_python() {
     let mut escaped = 0usize;
     let mut panicked = 0usize;
     let mut stuck = 0usize;
+    let mut skipped = 0usize;
     let mut divergences: Vec<String> = Vec::new();
 
     for case in cases {
         let id = case["id"].as_str().unwrap_or("<unnamed>");
         let expected = &case["expected"];
         let aborts = expected.get("aborts").and_then(JsonValue::as_bool) == Some(true);
+
+        // The only reason to skip: this build has no validator, so the case
+        // measures the absence of a feature rather than a parity gap. Selected
+        // by assertion type, so it can never widen to a case the build could
+        // have answered.
+        if !cfg!(feature = "json-schema")
+            && case["assertion"]["type"].as_str() == Some("json_schema")
+        {
+            skipped += 1;
+            continue;
+        }
 
         let results = match run_case(case, &root) {
             Outcome::Returned(results) => results,
@@ -332,7 +372,7 @@ fn differential_assertions_against_python() {
     let _ = std::panic::take_hook();
 
     let total = cases.len();
-    let comparable = total - CONTAINED_EXACT;
+    let comparable = total - CONTAINED_EXACT - skipped;
     println!("\n=== differential harness: assertions ===");
     println!("oracle environment: {}", document["environment"]);
     for line in &divergences {
@@ -348,6 +388,7 @@ fn differential_assertions_against_python() {
     println!("escaped containment:                     {escaped}");
     println!("panics:                                  {panicked}");
     println!("did not return:                          {stuck}");
+    println!("skipped (no validator in this build):    {skipped}/{SKIPPED_EXACT}");
 
     // Recipe-controlled input must never take the process down, wedge the run,
     // or truncate the report. None of these is a divergence to be traded off
@@ -355,6 +396,10 @@ fn differential_assertions_against_python() {
     assert_eq!(panicked, 0, "{panicked} cases panicked");
     assert_eq!(stuck, 0, "{stuck} cases never returned");
     assert_eq!(escaped, 0, "{escaped} malformed inputs were not contained");
+    assert_eq!(
+        skipped, SKIPPED_EXACT,
+        "skipped {skipped} cases, expected exactly {SKIPPED_EXACT} for this feature set"
+    );
     assert_eq!(
         contained, CONTAINED_EXACT,
         "expected exactly {CONTAINED_EXACT} contained cases, found {contained}"

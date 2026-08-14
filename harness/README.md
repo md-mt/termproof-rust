@@ -225,9 +225,34 @@ ratcheted count drops beneath its floor:
 | Escaped containment | the port also lost results | 0 |
 | Panicked | the port took the process down | 0 |
 | Never returned | the port wedged | 0 |
+| Skipped | no validator compiled in this build | 0 / 0 |
 
 The denominator is 147, not 165: the eighteen contained cases have no oracle
 verdict to agree with, so counting them either way would be inventing a result.
+
+### Without the `json-schema` feature
+
+The harness always compiles and always runs. `termproof`'s `json-schema`
+feature is default-on, and with it off the 58 `json_schema` cases have no
+validator to answer them — so those are skipped *by assertion type*, and only
+those. The other 107 are the same evidence either way, and a feature
+combination that dropped them would still report green, which is the failure
+this shape exists to prevent.
+
+| Count | `--no-default-features` |
+|---|---|
+| Full agreement | 89 / 89 |
+| Verdict agreement | 89 / 89 |
+| Contained | 18 / 18 |
+| Skipped | 58 / 58 |
+
+Skipped is asserted exactly, not ratcheted: a build that skips a case it could
+have answered is measuring less than it claims, and so is one that skips none
+when it should skip 58.
+
+That the remainder is 89 / 89 is worth reading twice — every one of the 23
+detail divergences and all 4 verdict divergences in the default run is a
+`json_schema` case, which is what the `jsonschema`-message note below predicts.
 
 The two agreement counts are separate floors on purpose. A fix that corrects a
 verdict and leaves the wording to a later commit moves the second and not the

@@ -119,6 +119,11 @@ and this document is updated.
   five private functions that serve `json_schema` and nothing else.
 - Every combination is built and tested, not just `default` and
   `--all-features`. With two features that is the full powerset of four.
+- A feature must not be able to compile a differential harness out. Parity
+  evidence is the reason the harnesses exist, and a combination that drops it
+  still reports green. Where a feature genuinely removes the capability a case
+  measures, the harness skips those cases *by type*, prints the count, and
+  asserts it exactly, with its own floor for the corpus that remains.
 
 ## 8. Unsafe-code policy
 
