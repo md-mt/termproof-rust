@@ -82,6 +82,57 @@ pub trait Session: Send {
     /// The argv used to create the session (for diagnostics).
     fn argv(&self) -> &[String];
 
+    /// The directory the session was launched in.
+    ///
+    /// A launch directory, not a live one. It is fixed when the child starts,
+    /// so a program that calls `chdir` — or a shell a recipe types `cd` into —
+    /// moves on and this does not follow. Resolve a path against it only for a
+    /// session you know has stayed put; no backend here can tell you whether
+    /// one has.
+    ///
+    /// It is also not "the `cwd` the recipe asked for", nor the directory the
+    /// run was started from. Backends disagree about both, so each resolves
+    /// where the child *went* instead of echoing the request back: the pty
+    /// backend starts the child in its home directory when the recipe named
+    /// none, tmux starts the pane beside the session's own artifacts, and both
+    /// quietly relocate a child sent somewhere that does not exist — which is
+    /// reported as `None`, not as the path it was never in. Echoing the
+    /// request would make this method agree with the recipe and disagree with
+    /// the child.
+    ///
+    /// `None` means this backend cannot say, never that there is no directory:
+    /// every child process has one. It is the answer for a session that has
+    /// not spawned yet, for the doubles that own no child at all
+    /// ([`crate::terminal::InMemorySession`], the Docker stub), and for a
+    /// backend that can see the child was moved somewhere but not where.
+    ///
+    /// A borrow, because every backend already holds this path. The live
+    /// directory would not fit the shape: reading one means asking the OS or
+    /// the multiplexer, and that answer is owned.
+    fn cwd(&self) -> Option<&std::path::Path> {
+        None
+    }
+
     /// The cast path (for evidence pipeline).
     fn cast_path(&self) -> &std::path::Path;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Session;
+    use crate::terminal::inmemory::InMemorySession;
+
+    #[test]
+    fn a_backend_that_owns_no_child_reports_no_directory() {
+        // The default, reached without an override. A double with no child
+        // cannot say where anything is running, and must not invent the
+        // runner's own directory as if it were the child's.
+        let session = InMemorySession::new(
+            vec!["sh".to_string()],
+            std::path::PathBuf::from("/tmp/c.cast"),
+            80,
+            24,
+        );
+        assert_eq!(session.cwd(), None);
+    }
 }

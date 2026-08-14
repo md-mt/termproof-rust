@@ -84,6 +84,10 @@ pub struct TmuxSession {
     socket: String,
     argv: Vec<String>,
     cast_path: PathBuf,
+    /// The directory the pane was created in, when that is knowable. `None`
+    /// when `new-session -c` was handed a path that is not a directory: tmux
+    /// takes it, puts the pane somewhere else, and does not say where.
+    workdir: Option<PathBuf>,
     cols: u16,
     rows: u16,
     exit_code: Option<i32>,
@@ -294,6 +298,21 @@ impl Session for TmuxSession {
         &self.argv
     }
 
+    fn cwd(&self) -> Option<&Path> {
+        // The directory the pane was created in, reported as the recipe spelled
+        // it — a relative one is relative to whoever started the run.
+        //
+        // tmux is the one backend that could answer the live question:
+        // `display-message -p '#{pane_current_path}'` does follow a `cd` inside
+        // the pane. It is not what this returns, for two reasons. It costs a
+        // subprocess on every call, on a method whose every other implementor
+        // is a field read; and it would make `cwd` mean "where it is now" here
+        // and "where it started" everywhere else, which is worse than a caveat
+        // that holds uniformly. A live reading is a separate method, and it
+        // would have to return an owned path.
+        self.workdir.as_deref()
+    }
+
     fn cast_path(&self) -> &Path {
         &self.cast_path
     }
@@ -334,13 +353,21 @@ impl SessionBackend for TmuxBackend {
         // A private socket per session: concurrent runs cannot see each other's
         // panes, and a wedged session cannot poison the next one.
         let socket = dir.join("tmux.sock").to_string_lossy().to_string();
-        let workdir = cwd.unwrap_or_else(|| dir.to_string_lossy().to_string());
+        let requested = launch_dir(cwd.as_deref(), &dir);
+        let workdir_arg = requested.to_string_lossy().to_string();
+        // What tmux is told and what the pane can be said to be in are not the
+        // same thing. `new-session` does not refuse a `-c` that is not a
+        // directory: it succeeds, creates the pane in the home directory
+        // instead, and reports none of that. Pass the request through as
+        // before, but only claim a directory we can see is one.
+        let workdir = requested.is_dir().then_some(requested);
         let wrapper = write_launch_script(&dir, &env, &argv)?;
 
         let mut session = TmuxSession {
             socket,
             argv,
             cast_path,
+            workdir,
             cols,
             rows,
             exit_code: None,
@@ -360,7 +387,7 @@ impl SessionBackend for TmuxBackend {
             "-y",
             &rows_s,
             "-c",
-            &workdir,
+            &workdir_arg,
             "sh",
             &wrapper,
         ])?;
@@ -371,6 +398,20 @@ impl SessionBackend for TmuxBackend {
     fn name(&self) -> &str {
         "tmux"
     }
+}
+
+/// What `new-session -c` is given: the directory the recipe named, or the
+/// session's own directory when it named none.
+///
+/// The fallback is not the runner's directory. The launch script is written
+/// into the session directory and the pane has to be able to reach it, and a
+/// pane that starts beside its own artifacts is easier to inspect after a
+/// failure than one that starts wherever the run happened to be invoked.
+///
+/// This is the request, not the outcome — see the caller for why the two are
+/// not the same when the path does not exist.
+fn launch_dir(cwd: Option<&str>, session_dir: &Path) -> PathBuf {
+    cwd.map_or_else(|| session_dir.to_path_buf(), PathBuf::from)
 }
 
 /// Write a shell wrapper that exports `env` and then execs the command.
@@ -537,6 +578,7 @@ mod tests {
             socket: dir.join("absent.sock").to_string_lossy().to_string(),
             argv: vec!["/bin/true".to_string()],
             cast_path: dir.join("s.cast"),
+            workdir: Some(dir.to_path_buf()),
             cols: 80,
             rows: 24,
             exit_code: None,
@@ -574,5 +616,53 @@ mod tests {
     #[test]
     fn the_backend_names_itself() {
         assert_eq!(TmuxBackend.name(), "tmux");
+    }
+
+    #[test]
+    fn the_pane_starts_where_the_recipe_said() {
+        assert_eq!(
+            launch_dir(Some("/srv/app"), Path::new("/tmp/run-1")),
+            PathBuf::from("/srv/app")
+        );
+    }
+
+    #[test]
+    fn a_recipe_with_no_directory_starts_the_pane_beside_its_artifacts() {
+        // The session directory, not the runner's: the launch script lives
+        // there and the pane has to be able to reach it.
+        assert_eq!(
+            launch_dir(None, Path::new("/tmp/run-1")),
+            PathBuf::from("/tmp/run-1")
+        );
+    }
+
+    #[test]
+    fn a_pane_reports_the_directory_it_was_created_in() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session = unreachable_session(dir.path());
+        assert_eq!(Session::cwd(&session), Some(dir.path()));
+    }
+
+    #[test]
+    fn a_directory_that_does_not_exist_is_still_passed_to_tmux() {
+        // Whether to accept a bad `-c` is tmux's call, not ours, and it does:
+        // `new-session` succeeds. Only the reporting changes.
+        let requested = launch_dir(Some("/no/such/place"), Path::new("/tmp/run-1"));
+        assert_eq!(requested, PathBuf::from("/no/such/place"));
+        assert!(
+            !requested.is_dir(),
+            "the filter the caller applies is what decides `cwd`"
+        );
+    }
+
+    #[test]
+    fn a_pane_sent_somewhere_that_does_not_exist_reports_nothing() {
+        // tmux takes the `-c`, creates the pane in the home directory instead,
+        // and says nothing about it. Echoing the request back would name a
+        // directory the pane was never in, so this answers "cannot say".
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut session = unreachable_session(dir.path());
+        session.workdir = None;
+        assert_eq!(Session::cwd(&session), None);
     }
 }

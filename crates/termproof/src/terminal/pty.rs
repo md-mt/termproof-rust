@@ -101,6 +101,38 @@ impl PtyConfig {
     }
 }
 
+/// Where `portable-pty` will actually start the child.
+///
+/// Not "the configured directory", and emphatically not "the directory we are
+/// in". `CommandBuilder` keeps the configured directory only when it *is* a
+/// directory, and otherwise — including when none was configured at all —
+/// starts the child in its home directory. So a pty session given no `cwd`
+/// does **not** inherit the runner's directory the way the process backend
+/// does, and one given a path that does not exist is silently moved rather
+/// than refused.
+///
+/// This reproduces that choice so [`Session::cwd`] can report where the child
+/// really is instead of where it was asked to be. It is a deliberate mirror of
+/// a dependency's internals, held in place by
+/// `tests/pty_session_trait.rs`, which compares this against what a real child
+/// prints — if `portable-pty` changes the rule, that test fails rather than
+/// this quietly starting to lie.
+///
+/// The home directory is read from the environment the child will get, in the
+/// same order `CommandBuilder` reads it. Its last resort is `getpwuid`, which
+/// needs `unsafe`; this crate forbids that, so an environment with no `HOME`
+/// at all is the one case here that answers "cannot say".
+fn launch_dir(config: &PtyConfig) -> Option<PathBuf> {
+    if let Some(dir) = config.cwd.as_deref().filter(|d| d.is_dir()) {
+        return Some(dir.to_path_buf());
+    }
+    config
+        .env
+        .get("HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+}
+
 /// Typed errors for PTY sessions.
 #[derive(Debug)]
 pub enum PtyError {
@@ -169,6 +201,10 @@ pub struct PtySession {
     /// `config.cast_path` flattened to a path so `Session::cast_path` can
     /// borrow one. Empty when the session is not recording.
     cast_path_snapshot: PathBuf,
+    /// Where the child was started, resolved at spawn by [`launch_dir`].
+    /// `None` until it has spawned, and after that only when the directory
+    /// could not be worked out.
+    launched_in: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for PtySession {
@@ -210,6 +246,7 @@ impl PtySession {
             screen_snapshot: String::new(),
             raw_snapshot: String::new(),
             cast_path_snapshot,
+            launched_in: None,
         })
     }
 
@@ -323,6 +360,10 @@ impl PtySession {
         self.master = Some(pair.master);
         self.child = Some(child);
         self.reader_handle = Some(reader_handle);
+        // Resolved once the child exists, so "has spawned" and "has a launch
+        // directory" are the same condition, and never from state that has had
+        // time to move since.
+        self.launched_in = launch_dir(&self.config);
         Ok(())
     }
 
@@ -733,6 +774,14 @@ impl Session for PtySession {
 
     fn argv(&self) -> &[String] {
         &self.config.argv
+    }
+
+    fn cwd(&self) -> Option<&std::path::Path> {
+        // Where the child started. A pty carries no channel for the child to
+        // report a later `chdir` on, and reading it out of the OS is not
+        // portable, so the launch directory is the whole of what this backend
+        // can honestly claim.
+        self.launched_in.as_deref()
     }
 
     fn cast_path(&self) -> &std::path::Path {

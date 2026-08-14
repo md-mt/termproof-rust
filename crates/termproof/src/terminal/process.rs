@@ -160,6 +160,10 @@ pub struct ProcessSession {
     stderr_handle: Option<JoinHandle<()>>,
     exit_code: Option<i32>,
     timed_out: bool,
+    /// The directory the child inherited, resolved at spawn, when the config
+    /// named none. Reading it later would be a different fact: this process
+    /// can change directory afterwards and the child cannot.
+    inherited_cwd: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for ProcessSession {
@@ -188,6 +192,7 @@ impl ProcessSession {
             stderr_handle: None,
             exit_code: None,
             timed_out: false,
+            inherited_cwd: None,
         }
     }
 
@@ -217,6 +222,12 @@ impl ProcessSession {
         }
         if self.child.is_some() {
             return Ok(());
+        }
+        // The child inherits this process's directory when the config named
+        // none. Resolve it now, so `cwd` can answer that case with a path
+        // instead of a `None` that reads as "cannot say".
+        if self.config.cwd.is_none() {
+            self.inherited_cwd = std::env::current_dir().ok();
         }
         let mut cmd = Command::new(&self.config.argv[0]);
         if self.config.argv.len() > 1 {
@@ -574,9 +585,28 @@ impl ProcessSession {
         }
     }
 
-    /// Current working directory override.
+    /// The directory the child was launched in.
+    ///
+    /// The configured directory when the config named one, otherwise the
+    /// directory this process was in when `spawn` ran — which is what the
+    /// child inherited. Either way it is where the child *started*: a child
+    /// that calls `chdir` moves on and this does not follow it.
+    ///
+    /// `None` before `spawn` with nothing configured, and if the directory
+    /// this process was in could not be read. It never means the child has no
+    /// directory.
+    ///
+    /// Inheriting is this backend's behaviour, not the terminal layer's:
+    /// `std::process::Command` leaves the child in our directory when none is
+    /// set, whereas the pty backend hands the child to `portable-pty`, which
+    /// starts it in its *home* directory instead. Do not carry the rule across.
+    ///
+    /// This is the same fact, under the same name, as
+    /// [`crate::terminal::Session::cwd`]. `ProcessSession` does not implement
+    /// that trait — it has no screen to offer one — so this is an inherent
+    /// method rather than an override.
     pub fn cwd(&self) -> Option<&Path> {
-        self.config.cwd.as_deref()
+        self.config.cwd.as_deref().or(self.inherited_cwd.as_deref())
     }
 
     /// Argv for the session.
@@ -651,6 +681,62 @@ mod tests {
         let out = result.output.combined_str.trim().to_string();
         // temp_dir may be symlinked; just check non-empty and contains component.
         assert!(!out.is_empty());
+    }
+
+    /// `pwd -P` rather than `pwd`: the shell prefers an inherited `$PWD` when
+    /// it is still valid, and on macOS the temporary directory reaches us
+    /// through a symlink. Both sides of these assertions have to be the
+    /// physical path or they compare two spellings of one directory.
+    fn pwd_argv() -> Vec<String> {
+        vec!["sh".to_string(), "-c".to_string(), "pwd -P".to_string()]
+    }
+
+    fn physical(path: &Path) -> PathBuf {
+        std::fs::canonicalize(path).expect("directory should exist")
+    }
+
+    #[test]
+    fn cwd_names_the_directory_the_child_started_in() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut sess =
+            ProcessSession::new(ProcessConfig::new(pwd_argv()).with_cwd(dir.path().to_path_buf()));
+        sess.spawn().expect("spawn");
+        let result = sess
+            .wait_with_timeout(Duration::from_secs(5))
+            .expect("wait");
+
+        let reported = sess.cwd().expect("a spawned child has a directory");
+        assert_eq!(reported, dir.path(), "reported as configured");
+        assert_eq!(
+            physical(reported),
+            Path::new(result.output.combined_str.trim()),
+            "cwd must name the directory the child itself printed"
+        );
+    }
+
+    #[test]
+    fn an_unconfigured_child_reports_the_directory_it_inherited() {
+        // The old answer here was `None`, which reads as "cannot say" — but the
+        // child does have a directory and it is knowable, so say it.
+        let mut sess = ProcessSession::new(ProcessConfig::new(pwd_argv()));
+        sess.spawn().expect("spawn");
+        let result = sess
+            .wait_with_timeout(Duration::from_secs(5))
+            .expect("wait");
+
+        let reported = sess
+            .cwd()
+            .expect("an inherited directory is still a directory");
+        assert_eq!(
+            physical(reported),
+            Path::new(result.output.combined_str.trim())
+        );
+    }
+
+    #[test]
+    fn an_unspawned_session_has_nowhere_to_report() {
+        let sess = ProcessSession::new(ProcessConfig::new(pwd_argv()));
+        assert_eq!(sess.cwd(), None, "nothing has launched yet");
     }
 
     #[test]
