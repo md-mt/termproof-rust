@@ -18,6 +18,7 @@ pub mod recipe;
 pub mod result;
 pub mod runner;
 pub mod schema;
+pub mod selection;
 pub mod steps;
 pub mod store;
 pub mod validation;
