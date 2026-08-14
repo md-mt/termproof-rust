@@ -1,0 +1,312 @@
+# Cuts a release once a week, but only when something worth releasing landed.
+#
+# ## What counts as "worth releasing"
+#
+# A change counts when it can reach something a release ships — the crate
+# tarballs on crates.io, or the binary attached to the GitHub release. In
+# practice that is any file inside a workspace member's package directory,
+# plus the root `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml`. The
+# member directories are read from `cargo metadata` at run time, never listed
+# here, so adding a crate, moving one, or merging several into one needs no
+# edit to this workflow — the same property publish-plan.py has.
+#
+# Held-back (`publish = false`) members count. They never reach crates.io, but
+# the CLI is what the binary release is built from, so a change to it does
+# reach someone.
+#
+# These do **not** count: `.github/`, `docs/`, `specs/`, `harness/`, the root
+# `README.md`, the root `LICENSE`. None are packaged. A release cut for one of
+# them would carry a version number whose diff, from outside the repository, is
+# empty — and crates.io never gives a version number back. A crate's *own*
+# README does count: it sits inside the package directory, it is the crates.io
+# front page, and the maturity warning it carries is a claim the release makes.
+#
+# The automation's own version-bump commit is excluded twice over, because a
+# bump touches `Cargo.toml` and `Cargo.lock` and would otherwise justify a
+# release every week forever: the tag is placed *on* the bump commit so the
+# next range starts after it, and any `chore(release):` subject is dropped from
+# the commit list regardless.
+#
+# ## What version it picks
+#
+# Conventional commits, with the pre-1.0 convention applied on purpose. Under
+# `0.x` the minor is what the major will become, so every level shifts down:
+#
+#     major == 0     breaking -> minor    feat -> patch    other -> patch
+#     major >= 1     breaking -> major    feat -> minor    other -> patch
+#
+# The `0.x` row is the rule already written in docs/publishing.md. The `>= 1`
+# row is there so crossing 1.0 does not silently keep shifting.
+#
+# ## A quiet week is a success
+#
+# The decision runs in its own job. When the answer is no, that job succeeds,
+# writes why to the run summary, and every later job is skipped. It does not
+# fail, so a genuine error is still the only red run in the list.
+#
+# ## Running it by hand
+#
+# `workflow_dispatch` applies exactly the same rule — a manual run on a quiet
+# week releases nothing. Set `force` to release anyway; the version is still
+# derived from the commits. Set `dry_run` to see the decision and stop — it
+# needs no secret and changes nothing, so it is the safe way to ask this
+# workflow what it would do. There is no input for choosing a version.
+#
+# ## Required secret: RELEASE_TOKEN
+#
+# This workflow cannot run on the default `GITHUB_TOKEN`. A tag pushed, or a
+# release created, using `GITHUB_TOKEN` does not start another workflow run —
+# GitHub suppresses those events to stop workflows triggering themselves. Both
+# halves of this release depend on exactly that happening:
+#
+#   tag push          -> release-rust.yml   builds and attaches the binaries
+#   release published -> publish-crates.yml uploads to crates.io
+#
+# On `GITHUB_TOKEN` neither would fire, and the result is the worst kind of
+# quiet failure: a green run, a real tag, a real release, no binaries and no
+# crates. Worse, publish-crates.yml uploads on `release: published` and nothing
+# else — its `workflow_dispatch` path is a dry run by design — so a release
+# created this way can never be published by re-running anything. Only deleting
+# and recreating the release by hand recovers it.
+#
+# So `RELEASE_TOKEN` is a hard precondition, checked before anything is
+# committed, and its absence fails the run rather than half-doing the release.
+# It needs Contents: read and write on this repository, and it must belong to
+# an identity allowed to push to `main`. A fine-grained PAT or a GitHub App
+# installation token both work; an App is preferable because it is not tied to
+# a person leaving.
+#
+# See .github/scripts/release-decide.py for the decision logic in full.
+name: Auto-release
+
+on:
+  schedule:
+    # Mondays 07:00 UTC. After the weekend, before the week's work lands.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Release even if nothing releasable changed"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Decide and report only — no commit, tag or release"
+        type: boolean
+        default: false
+
+# One release at a time. A manual dispatch landing on top of a scheduled run
+# must queue behind it, not race it into two tags. Never cancel in progress: a
+# run killed between `git push` and `gh release create` leaves a bumped main
+# with no release on it.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  decide:
+    name: Decide
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
+      tag: ${{ steps.decide.outputs.tag }}
+      bump: ${{ steps.decide.outputs.bump }}
+      first_release: ${{ steps.decide.outputs.first_release }}
+    steps:
+      # Full history and tags: the decision is a range between the last release
+      # tag and HEAD, and neither exists in a shallow clone.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+
+      - name: Decide whether to release, and what version
+        id: decide
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            .github/scripts/release-decide.py --force > decision.json
+          else
+            .github/scripts/release-decide.py > decision.json
+          fi
+          jq 'del(.notes, .changed_paths, .commits)' decision.json
+
+          RELEASE="$(jq -r .release decision.json)"
+          {
+            echo "release=$RELEASE"
+            echo "version=$(jq -r .next_version decision.json)"
+            echo "tag=$(jq -r .tag decision.json)"
+            echo "bump=$(jq -r .bump decision.json)"
+            echo "first_release=$(jq -r .first_release decision.json)"
+          } >> "$GITHUB_OUTPUT"
+
+          jq -r .notes decision.json > release-notes.md
+
+          {
+            if [ "$RELEASE" = "true" ]; then
+              echo "### Releasing \`$(jq -r .tag decision.json)\`"
+              echo
+              echo "- Bump: \`$(jq -r .bump decision.json)\` from \`$(jq -r .current_version decision.json)\`"
+              echo "- Since: \`$(jq -r '.base // "(no previous release)"' decision.json)\`"
+              echo "- Commits: $(jq -r .commit_count decision.json)"
+            else
+              echo "### No release this week"
+              echo
+              jq -r .reason decision.json
+              echo
+              echo "This is the expected outcome of a quiet week. Nothing failed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Before the gate, before anything is committed. A release that cannot
+      # trigger the binary build or the crates.io publish is not a release, and
+      # it is not recoverable by re-running anything — see the header.
+      - name: Require a token that can trigger the downstream workflows
+        if: steps.decide.outputs.release == 'true' && !inputs.dry_run
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::the RELEASE_TOKEN secret is not set. A tag or release created with the default GITHUB_TOKEN does not start release-rust.yml or publish-crates.yml, so this run would produce a release with no binaries and no published crates, and no re-run could fix it. Add a fine-grained PAT or GitHub App installation token with Contents: read and write as the RELEASE_TOKEN secret."
+            exit 1
+          fi
+          echo "RELEASE_TOKEN is present"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.decide.outputs.release == 'true'
+        with:
+          name: release-decision
+          path: |
+            decision.json
+            release-notes.md
+
+  # The same gate publish-crates.yml runs. It runs there too, after the release
+  # exists — but by then the tag is already pushed and release-rust.yml is
+  # already building. Better to find a broken main before anything is tagged.
+  gate:
+    name: Gate
+    needs: decide
+    if: needs.decide.outputs.release == 'true' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+          components: rustfmt, clippy
+      - name: fmt
+        run: cargo fmt --check --all
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: test
+        run: cargo test --workspace
+      - name: package
+        run: cargo publish --dry-run --workspace
+
+  release:
+    name: Release ${{ needs.decide.outputs.tag }}
+    needs: [decide, gate]
+    if: needs.decide.outputs.release == 'true' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    permissions:
+      # Kept at write even though the pushes below authenticate as
+      # RELEASE_TOKEN: actions/checkout still needs to read the repository, and
+      # a reader would silently be enough right up until someone removed the
+      # token. Nothing here uploads to a registry — publish-crates.yml does
+      # that, triggered by the release this job publishes.
+      contents: write
+    steps:
+      # RELEASE_TOKEN, not github.token: the pushes below have to be seen by
+      # GitHub as coming from an identity other than this workflow, or the tag
+      # push and the release will not start release-rust.yml and
+      # publish-crates.yml. checkout persists this token, so the later
+      # `git push` calls use it without naming it again.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+          token: ${{ secrets.RELEASE_TOKEN }}
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-decision
+
+      # main may have moved between the decision and here — the gate takes
+      # minutes. Releasing a tree nobody decided about is worse than waiting a
+      # week, so stop rather than guess.
+      - name: Refuse to release a tree the decision did not look at
+        run: |
+          DECIDED="$(jq -r .head decision.json)"
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$DECIDED" != "$ACTUAL" ]; then
+            echo "::error::main moved from $DECIDED to $ACTUAL while this run was in the gate. Re-run the workflow."
+            exit 1
+          fi
+
+      - name: Bump the workspace version
+        if: needs.decide.outputs.first_release != 'true'
+        run: .github/scripts/version-bump.py "${{ needs.decide.outputs.version }}"
+
+      # Exactly the check publish-crates.yml makes on `release: published`,
+      # made here instead — where a mismatch costs a failed run rather than a
+      # tag that publishes nothing.
+      - name: Confirm the tag will satisfy the publish guard
+        env:
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          VERSION="$(.github/scripts/publish-plan.py | jq -r .version)"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::would tag '$TAG' but the manifest says '$VERSION'; publish-crates.yml would refuse this release"
+            exit 1
+          fi
+          echo "'$TAG' matches the manifest version '$VERSION'"
+
+      - name: Commit and tag
+        env:
+          TAG: ${{ needs.decide.outputs.tag }}
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! git diff --quiet; then
+            git commit -aqm "chore(release): $TAG"
+          else
+            echo "first release — the manifest is already at $VERSION, nothing to commit"
+          fi
+
+          git tag -a "$TAG" -m "$TAG"
+          # Push the branch first. If the tag push then fails, main carries a
+          # bump with no tag — recoverable, and the next run's `chore(release):`
+          # filter keeps it from being mistaken for a week's work. The reverse
+          # order would leave a tag pointing at a commit that is not on main,
+          # which release-rust.yml would happily build from.
+          git push origin HEAD:main
+          git push origin "$TAG"
+
+      # Publishing the release is what triggers publish-crates.yml, which is
+      # what uploads to crates.io. It is the last thing this workflow does and
+      # the only irreversible one: crates.io never gives a version number back.
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAG: ${{ needs.decide.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release-notes.md \
+            --verify-tag
+          {
+            echo "### Released [$TAG](${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG)"
+            echo
+            echo "This triggered both the binary build and the crates.io publish. Watch both."
+          } >> "$GITHUB_STEP_SUMMARY"
