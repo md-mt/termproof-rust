@@ -20,7 +20,11 @@ Rust tracking: milestones 5–10 and issues 94–123
 >
 > - **Repository layout (§5.2).** The workspace is no longer under `rust/`. The
 >   manifest is `Cargo.toml` at this repository's root and crates are under
->   `crates/`. The crate table itself is accurate.
+>   `crates/`. The crate table is no longer accurate either: `termproof-core`,
+>   `termproof-terminal` and `termproof-evidence` were merged into one crate,
+>   `termproof`, before any of them was published — its root, `terminal` module
+>   and `evidence` module hold those three responsibilities respectively.
+>   `termproof-cli` and `termproof-plugin-protocol` are unchanged.
 > - **CI gates (§6.2), release channels and version sourcing (§8, RUST-021 and
 >   RUST-023).** CI here runs fmt, clippy and tests only; the coverage,
 >   conformance, drift and dependency-advisory gates listed there have never

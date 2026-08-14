@@ -5,7 +5,7 @@ This is the oracle half of the assertion differential harness, the sibling of
 ``probe_steps.py``. It drives the eight Python built-in assertions over
 ``harness/corpus/assertion_cases.json`` and writes each case's observed
 ``name``/``passed``/``detail`` to ``harness/corpus/assertions.expected.json``.
-The Rust half (``crates/termproof-core/tests/differential_assertions.rs``)
+The Rust half (``crates/termproof/tests/differential_assertions.rs``)
 replays the same corpus and reports the agreement count, so the measurement can
 be reproduced without a Python interpreter.
 

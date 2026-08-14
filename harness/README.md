@@ -22,7 +22,7 @@ The harness is two halves that meet at a checked-in corpus.
 | Half | Where | What it does |
 |---|---|---|
 | Oracle | `probe_steps.py` | Drives the Python steps over `corpus/cases.json` and records each case's `name`, `passed` and `detail` into `corpus/steps.expected.json`. |
-| Port | `crates/termproof-core/tests/differential_steps.rs` | Replays the same cases through the Rust steps and reports the agreement count. |
+| Port | `crates/termproof/tests/differential_steps.rs` | Replays the same cases through the Rust steps and reports the agreement count. |
 
 Splitting it this way means the measurement is reproducible in CI without a
 Python interpreter, and the recorded expectations carry the environment they
@@ -45,7 +45,7 @@ any behaviour.
 ## Reading the number
 
 ```sh
-cargo test -p termproof-core --test differential_steps -- --nocapture
+cargo test -p termproof --test differential_steps -- --nocapture
 ```
 
 The test prints every divergence and two counts, and fails if either drops below
@@ -132,7 +132,7 @@ port reaches the same verdict by the same route and says so in its own words.
 `press/ctrl-bracket` (`ctrl-[`) and `press/ctrl-unmapped` (`ctrl-1`) are the only
 rows where the two runtimes disagree on `passed`. The oracle accepts both — it
 derives the control byte arithmetically — and the port's key table refuses
-anything not named in it. That is `termproof-terminal`'s mapping rather than the
+anything not named in it. That is the `termproof::terminal` mapping rather than the
 step layer's (`specs/002-builtin-steps/spec.md` FR-016), and the shape the port
 should adopt is open as OQ-005, because `ctrl-1` produces a byte the oracle
 itself would not call meaningful.
@@ -158,7 +158,7 @@ A second corpus, same shape, for the eight built-in assertions
 | Half | Where | What it does |
 |---|---|---|
 | Oracle | `probe_assertions.py` | Builds a real fixture tree, drives the Python assertions over `corpus/assertion_cases.json` and records each case's `name`, `passed` and `detail` into `corpus/assertions.expected.json`. |
-| Port | `crates/termproof-core/tests/differential_assertions.rs` | Builds the same fixture tree, replays the same cases through the Rust assertions and reports the agreement count. |
+| Port | `crates/termproof/tests/differential_assertions.rs` | Builds the same fixture tree, replays the same cases through the Rust assertions and reports the agreement count. |
 
 ## The corpus
 
@@ -211,7 +211,7 @@ any behaviour.
 ## Reading the number
 
 ```sh
-cargo test -p termproof-core --test differential_assertions -- --nocapture
+cargo test -p termproof --test differential_assertions -- --nocapture
 ```
 
 The test prints every divergence and the counts below, and fails if either
@@ -260,7 +260,7 @@ exact `detail` each assertion produces.
 - **Whether the recorded oracle is itself right.** The corpus measures agreement
   with the Python implementation as it behaves today, which is why FR-020's
   eighteen cases are scored against the spec instead.
-- **Non-POSIX path semantics.** `crates/termproof-core/src/pypath.rs` models
+- **Non-POSIX path semantics.** `crates/termproof/src/pypath.rs` models
   `PurePosixPath`. A Windows drive letter or UNC path is not in the corpus and
   is not handled.
 

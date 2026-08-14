@@ -1,6 +1,6 @@
 # Publishing to crates.io
 
-Nothing here has been published yet. The first release reserves the names it
+Nothing here has been published yet. The first release reserves the name it
 uses, and **crates.io never releases a name once it is taken, even after a
 yank** — so read [What publishes, and what does
 not](#what-publishes-and-what-does-not) before the first release rather than
@@ -8,13 +8,11 @@ after it.
 
 ## What publishes, and what does not
 
-Three crates are in scope:
+One crate is in scope:
 
 | Crate | Publishes | Why |
 |---|---|---|
-| `termproof-terminal` | yes | PTY sessions, vt100 screen, asciicast recording |
-| `termproof-core` | yes | recipe model, steps, assertions, orchestration |
-| `termproof-evidence` | yes | rendering, reports, video, baselines, diff |
+| `termproof` | yes | the whole library: recipe model, steps, assertions, orchestration, terminal sessions, evidence pipeline |
 | `termproof-cli` | **held** | `publish = false` |
 | `termproof-plugin-protocol` | **held** | `publish = false` |
 
@@ -27,47 +25,42 @@ Both keep complete metadata. Lifting `publish = false` is the only change
 needed to publish either of them — the release automation derives its set from
 that field, so nothing else has to be edited.
 
-**These three are intended to become a single crate named `termproof`.** That
-consolidation is separate work, sequenced after the in-flight parity branch
-lands. Do not attempt it as part of a release. It is the reason nothing in the
-tooling below hardcodes a crate list: when three crates become one, the
-workflow should keep working untouched.
+`termproof` was merged from `termproof-core`, `termproof-terminal` and
+`termproof-evidence` while all three were still unpublished, so none of those
+names was ever reserved and no consumer was ever pointed at one. Nothing in the
+tooling below hardcoded the old list, which is why the merge needed no edit
+here beyond this prose.
 
 ## The dependency graph
 
 Verified from the manifests with `cargo metadata`, not assumed:
 
 ```
-termproof-terminal          (no internal dependencies)
+termproof                          (no internal dependencies)
         │
-        ├── termproof-core                      → termproof-terminal
-        │        │
-        │        ├── termproof-evidence         → termproof-core, termproof-terminal
-        │        │        │
-        │        │        └── termproof-cli     → termproof-core, termproof-evidence   [held]
-        │        │
-        │        └── termproof-plugin-protocol  → termproof-core, termproof-terminal   [held]
+        ├── termproof-cli              → termproof   [held]
+        │
+        └── termproof-plugin-protocol  → termproof   [held]
 ```
 
-`termproof-plugin-protocol` is a leaf — nothing depends on it — but it is *not*
-at the bottom of the graph: it depends on both `termproof-core` and
-`termproof-terminal`, so it could never go first.
+Both held crates are leaves, and the one publishable crate has no internal
+dependencies at all, so the order below has nothing to sort.
 
 ## Publish order
 
-**`termproof-terminal` → `termproof-core` → `termproof-evidence`.**
+**`termproof`, and nothing else.**
 
-Do not copy that list anywhere. `.github/scripts/publish-plan.py` derives it
+Do not copy that anywhere. `.github/scripts/publish-plan.py` derives it
 from `cargo metadata` — every workspace member whose `publish` is not false,
 topologically sorted over its internal dependencies — and prints:
 
 ```console
 $ .github/scripts/publish-plan.py
-{"version": "0.2.1", "order": ["termproof-terminal", "termproof-core", "termproof-evidence"], "held": ["termproof-cli", "termproof-plugin-protocol"]}
+{"version": "0.2.1", "order": ["termproof"], "held": ["termproof-cli", "termproof-plugin-protocol"]}
 ```
 
-The derivation agrees with the order verified by hand from the manifests. It
-also refuses two states that would produce a broken release:
+The derivation agrees with what the manifests say. It also refuses two states
+that would produce a broken release:
 
 - a publishable crate that depends on a held one, which could never resolve on
   the registry;
@@ -100,9 +93,11 @@ before a release depends on it.
 ### Retrying a partial release
 
 Re-run the workflow from the release. The publish step is idempotent: it asks
-the crates.io index what is already there and skips it, so a run that failed
-after the first crate finishes the remaining two rather than aborting on
-`crate version already exists`.
+the crates.io index what is already there and skips it, so a re-run finishes
+whatever is left rather than aborting on `crate version already exists`. With
+one crate in the set that is the difference between a clean no-op and a red
+release; if the set ever grows again it is the difference between finishing a
+partial release and being unable to.
 
 This is why the workflow loops rather than calling `cargo publish --workspace`,
 which orders and waits by itself but aborts when a version is already on the
@@ -110,37 +105,27 @@ registry — precisely the state a retry starts from.
 
 ### Manual fallback
 
-If the workflow is unusable, publish by hand in the derived order and wait for
-each crate to appear on the index before the next, or the next crate's
-verification fails with `no matching package named … found`:
+If the workflow is unusable, publish by hand. There is one crate and it has no
+internal dependencies, so there is no order to get wrong and nothing to wait
+for between uploads:
 
 ```sh
-.github/scripts/publish-plan.py            # confirm the order first
-cargo publish -p termproof-terminal
-# wait until the version is on https://index.crates.io/te/rm/termproof-terminal
-cargo publish -p termproof-core
-# ... and so on, in order
+.github/scripts/publish-plan.py            # confirm the set first
+cargo publish -p termproof
 ```
 
-A single-crate `--dry-run` of anything but the first crate fails today with
-`no matching package named … found`, because the dependency is not on the
-registry yet. That is expected and is not a defect in the package. To verify a
-dependent crate before the first release, use the workspace dry run — it
-overlays the not-yet-published tarballs in a temporary local registry:
+Rehearse on a clean target directory:
 
 ```sh
-cargo publish --dry-run --workspace
+CARGO_TARGET_DIR=$(mktemp -d) cargo publish --dry-run -p termproof
 ```
 
-Rehearse that on a clean target directory. The overlay registry hands cargo a
-package identified only by name and version, and cargo treats registry sources
-as immutable — so a second rehearsal of the *same* version, after the source
-has changed, can reuse the artefact built from the first one and fail on code
-that is no longer there. The failure looks like a real defect and is not:
-
-```sh
-CARGO_TARGET_DIR=$(mktemp -d) cargo publish --dry-run --workspace
-```
+The clean target directory is not superstition. Cargo treats registry sources
+as immutable and keys a package by name and version alone, so a second
+rehearsal of the *same* version, after the source has changed, can reuse the
+artefact built from the first one and fail on code that is no longer there —
+typically as an unresolved import for a module that is plainly present. The
+failure looks like a real defect and is not.
 
 CI is not exposed to this — no workflow caches `~/.cargo` or `target/`, so
 every run starts empty. Keep it that way, or the release gate inherits the
@@ -164,7 +149,7 @@ both values.
 
 ## Version-bump rule
 
-- **One version for the whole workspace.** All five crates inherit `version`
+- **One version for the whole workspace.** All three crates inherit `version`
   from `[workspace.package]` and are released together at the same number. The
   plan script refuses to run if they ever disagree.
 - Bump `version` in the root `Cargo.toml` **and** the `version` on each
@@ -185,8 +170,8 @@ The workflow enforces the mechanical items; these are the ones it cannot.
 - [ ] `cargo package --list -p <crate>` for each publishable crate — read it,
       do not skim it. Anything large, generated, or repository-only does not
       belong in a tarball.
-- [ ] The maturity warning in each crate's README still describes the port
-      accurately. Every crate's crates.io front page carries it; a stale one is
+- [ ] The maturity warning in the crate's README still describes the port
+      accurately. It is what the crates.io front page carries; a stale one is
       a claim of parity that has not been earned.
 - [ ] Nothing newly publishable was made publishable by accident — check the
       `held` list in the plan output.
@@ -199,15 +184,15 @@ The published tarballs are deliberately smaller than the repository:
   oracle expectations (~150 KB). It lives at the repository root, outside every
   crate directory, so it is never packaged. It is a measurement artefact for
   contributors, not something a consumer of the library needs.
-- **`crates/termproof-core/tests/differential_steps.rs` and
+- **`crates/termproof/tests/differential_steps.rs` and
   `differential_assertions.rs`** — excluded explicitly. They replay
   `harness/corpus/`, so without it they cannot run; shipping tests that cannot
   run is worse than not shipping them. Run them from a repository checkout.
 - **`specs/`, `docs/`, `.github/`** — repository root, never packaged.
 
-Everything else each crate needs at build time is inside its own directory, and
-the workspace dry run proves it: each package is verified by compiling it from
-its own tarball.
+Everything else the crate needs at build time is inside its own directory, and
+the dry run proves it: the package is verified by compiling it from its own
+tarball.
 
 ## Licensing
 

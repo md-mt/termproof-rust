@@ -1,8 +1,7 @@
-# termproof-core
+# termproof
 
-Recipe model, schema, validation, planning, steps, assertions and run
-orchestration — the core of
-[TermProof](https://github.com/md-mt/termproof-rust).
+Evidence-first verification for TUI and terminal applications — the library
+half of [TermProof](https://github.com/md-mt/termproof-rust).
 
 > **Maturity: this port is in progress and is not at parity with the Python
 > implementation.** The Python implementation at
@@ -12,18 +11,56 @@ orchestration — the core of
 > [the maturity section of the workspace README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it)
 > before depending on this crate.
 
+## Layout
+
+This crate was merged from three — `termproof-core`, `termproof-terminal` and
+`termproof-evidence` — before any of them was published, so the shape below is
+the only one that has ever existed on crates.io.
+
+- **The crate root** is the recipe model, config, schema, validation, steps,
+  assertions, planning, orchestration and execution. It is flat rather than
+  under a `core` module: it is the crate's primary surface, and a module named
+  `core` shadows the `core` crate for every path in its scope.
+- **`terminal`** is the session layer — PTY, tmux and process sessions, plain
+  and attributed screen state, asciicast recording.
+- **`evidence`** is the evidence pipeline — screenshot and video rendering,
+  Markdown and JUnit reports, visual baselines, diff and upload.
+
 ## What it provides
+
+### Root — recipes, steps, assertions, orchestration
 
 - `Recipe`, `Step`, `Assertion`, `VerifierConfig` — the recipe model, loaded
   from JSON or YAML, with a Draft 2020-12 schema and structured validation.
 - `steps` — the seven built-in step actions and their dispatch.
 - `assertions` — the eight built-in assertions.
 - `planner` / `runner` / `execution` — recipe × renderer planning and execution
-  against a `termproof-terminal` session.
+  against a `terminal` session.
 - `store` / `cache` — canonical artifact storage with a path-traversal guard,
   and a content-addressed run cache.
 - `pyregex` / `pyrepr` / `pypath` / `pyschema` — the compatibility shims that
   keep this port's behaviour close to the Python oracle's.
+
+### `terminal` — sessions and screen
+
+- `PtySession` — a child process on a real pseudo-terminal via `portable-pty`,
+  implementing the `Session` interface the rest of TermProof runs against.
+- `TerminalScreen` — a `vt100` cell grid that interprets escape sequences
+  rather than stripping them.
+- `CastRecorder` / `replay_cast` — asciicast v2 recording and replay.
+- `wait_for_idle` / `IdleTracker` — output-quiescence detection.
+- `SessionBackend` implementations: `PtySessionBackend` (the default),
+  `PluginSessionBackend`, and `InMemorySession` for tests.
+
+### `evidence` — screenshots, video, reports
+
+- `render_png` / `render_svg` / `render_by_extension` — screen state to an
+  image.
+- `generate_markdown` / `generate_junit` — human and machine reports for a run.
+- `apply_visual_diff` — compare a screenshot against a stored baseline, or
+  refresh the baseline.
+- `render_mp4` — video via external `agg` and `ffmpeg` binaries, resolved at
+  run time and failing with a named diagnostic when absent.
 
 ### Library surface no TermProof command uses yet
 
@@ -37,6 +74,20 @@ the library; not evidence that a `termproof run` does any of it.
 - `vocabulary` — a configurable failure detector.
 - `build_info` — provenance for the binary under test, so a result can be
   traced back to an exact artifact.
+- `terminal::attributed` — a per-cell screen carrying foreground, background,
+  bold, dim, italic, underline, strikethrough, reverse and display width, with
+  an SVG renderer. The screenshots a run writes today still come from the
+  single-colour text path.
+- `terminal::tmux` — a `Session` that runs the program in a tmux pane and reads
+  the grid back with `capture-pane`. A disagreement between it and the `vt100`
+  path is an emulation gap made visible.
+- `terminal::proc` — child processes with a deadline.
+- `evidence::screenshot` and `evidence::cast_video` — stills and video frames
+  rendered through one renderer rather than two unrelated ones.
+- `evidence::dedup` — skips re-rendering a screen identical to the step before
+  it.
+- `evidence::uploader` — a publishing seam with a fallback chain that records
+  which store it fell back from.
 
 ## Measured agreement, not parity
 
@@ -50,6 +101,18 @@ the divergences.
 `load_canonical_schema` finds nothing in this repository: the canonical recipe
 schema and the example corpus stay with the Python repository on purpose, as
 the contract both implementations answer to.
+
+## Known gaps
+
+- `terminal::DockerSessionBackend` is a stub.
+- `terminal::InMemorySession` encodes test-passing rather than PTY semantics:
+  `wait_for_text` answers from fixed content and ignores its deadline, and
+  `wait_for_idle` always returns true.
+- Two `press` key mappings (`ctrl-[`, `ctrl-1`) are refused here that the
+  Python oracle accepts.
+- The CLI parses `--video`, `--diff` and `--update-baselines` but does not yet
+  call into the corresponding `evidence` functions; they are reachable as a
+  library API, not from a `termproof run`.
 
 ## Package contents
 

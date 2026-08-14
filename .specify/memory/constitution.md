@@ -55,7 +55,7 @@ Corollaries:
 - The words "parity", "byte-for-byte", and "byte-stable" do not appear in a PR title or
   body without a measurement in the same document.
 - Self-reported gate results must use CI's exact command. A narrower command that passes is
-  a false green: `cargo clippy -p termproof-core` exits 0 where CI's
+  a false green: `cargo clippy -p termproof` exits 0 where CI's
   `--workspace --all-targets --all-features` fails.
 - Divergences are reported as a count out of a total, never as a list of the ones found.
 

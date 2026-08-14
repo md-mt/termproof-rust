@@ -3,7 +3,7 @@
 
 Emits JSON on stdout:
 
-    {"version": "0.2.1", "order": ["termproof-terminal", "termproof-core", ...]}
+    {"version": "0.2.1", "order": ["termproof"]}
 
 `order` is every workspace member that is publishable to crates.io, sorted so
 that each crate's internal dependencies come before it. `version` is the single
@@ -48,7 +48,7 @@ def publishable(pkg):
 def workspace_version(members):
     """The one version every member shares.
 
-    All five crates inherit `version` from `[workspace.package]` and are
+    Every crate inherits `version` from `[workspace.package]` and they are
     released in lockstep. If that ever stops being true the release tag can no
     longer identify what was published, so this refuses to guess.
     """

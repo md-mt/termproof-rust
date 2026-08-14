@@ -15,7 +15,7 @@ nothing here should be read as a claim that it behaves the same way.
 - There is **no parity gate**. What exists is a differential harness for the
   seven built-in steps: `harness/probe_steps.py` records the Python
   implementation's verdict and diagnostic for each of 115 checked-in cases, and
-  `crates/termproof-core/tests/differential_steps.rs` replays the same cases
+  `crates/termproof/tests/differential_steps.rs` replays the same cases
   through the Rust steps — all seven actions, plus the unknown- and
   missing-action rows, through `steps::dispatch`. It runs in CI as part of
   `cargo test --workspace`, and it asserts a floor rather than equality. On that
@@ -38,8 +38,8 @@ nothing here should be read as a claim that it behaves the same way.
   `wait_for_text` answers from fixed content and ignores its deadline, and
   `wait_for_idle` always returns true — so nothing running through it can show a
   deadline being honoured; two `press` rows (`ctrl-[`, `ctrl-1`) where the
-  port's key table refuses a key the oracle accepts, which is
-  `termproof-terminal`'s mapping to settle; `wait_for_idle` does not distinguish
+  port's key table refuses a key the oracle accepts, which is the `terminal`
+  module's mapping to settle; `wait_for_idle` does not distinguish
   "no output observed from the session" from an ordinary idle timeout; and 30
   cases where the port reaches the oracle's verdict but words the diagnostic
   itself, because the oracle's wording there is CPython's or libc's and whether
@@ -49,7 +49,7 @@ nothing here should be read as a claim that it behaves the same way.
   `send_line` silently discarding a non-string `text`, and match diagnostics
   diverging from Python's `repr` — are fixed, each with a test that failed
   first.
-- The PTY backend and terminal screen in `termproof-terminal` are no longer
+- The PTY backend and terminal screen in `termproof::terminal` are no longer
   stubs, and they are now reachable: children run on a real pseudo-terminal via
   `portable-pty`, the screen is a `vt100` cell grid that interprets escapes
   instead of stripping them, `PtySession` implements `Session`, and
@@ -71,20 +71,20 @@ nothing here should be read as a claim that it behaves the same way.
 - **There is new library surface that no command reaches yet.** Eight modules
   landed as APIs with tests and no caller, so they are worth knowing about and
   worth not mistaking for features:
-  - `termproof-terminal` grew `attributed`, a per-cell screen carrying
+  - `termproof::terminal` grew `attributed`, a per-cell screen carrying
     foreground, background, bold, dim, italic, underline, strikethrough,
     reverse and display width, with an SVG renderer; `tmux`, a `Session` that
     runs the program in a tmux pane and reads the grid back with
     `capture-pane`, so a disagreement between it and the `vt100` path is an
     emulation gap made visible; and `proc`, child processes with a deadline.
-  - `termproof-evidence` grew `screenshot` and `cast_video`, which render
+  - `termproof::evidence` grew `screenshot` and `cast_video`, which render
     stills and video frames through that one renderer rather than two unrelated
     ones; `dedup`, which skips re-rendering a screen identical to the step
     before it; and `uploader`, a publishing seam with a fallback chain that
     records which store it fell back from.
-  - `termproof-core` grew `parity`, which compares two runs and reports where
-    they disagree; `before_after`, which reports which outcomes flipped;
-    `selection`, which maps a changeset onto recipes via `ci_paths`;
+  - The `termproof` crate root grew `parity`, which compares two runs and
+    reports where they disagree; `before_after`, which reports which outcomes
+    flipped; `selection`, which maps a changeset onto recipes via `ci_paths`;
     `run_config`, a whole run described by one file; and `vocabulary`, a
     configurable failure detector.
 
@@ -126,12 +126,14 @@ authority on TermProof's behaviour.
   corpus and the recorded oracle expectations
 - `crates/` — each crate carries its own `README.md`, which is what crates.io
   renders for it
+  - `termproof` — the whole library, and the only crate that publishes. Its
+    root is models, config, schema, registries, planning and orchestration;
+    `terminal` is PTY/tmux/process sessions, terminal screen and cast
+    recording; `evidence` is rendering, reports, video, baselines, diff, dedup
+    and publishing. It was merged from `termproof-core`, `termproof-terminal`
+    and `termproof-evidence` before any of them was published — see that
+    crate's README for why the layout is this one.
   - `termproof-cli` — binary (`termproof`), command parsing, diagnostics
-  - `termproof-core` — models, config, schema, registries, planning, orchestration
-  - `termproof-terminal` — PTY/tmux/process sessions, terminal screen, cast
-    recording
-  - `termproof-evidence` — rendering, reports, video, baselines, diff, dedup,
-    publishing
   - `termproof-plugin-protocol` — versioned process messages, client/host support
 
 ## Quickstart
@@ -153,7 +155,7 @@ with the Python repository on purpose:
 
 - **The recipe schema and the example corpus.** They are the contract both
   implementations answer to, so they stay with the oracle. `load_canonical_schema`
-  in `termproof-core` therefore finds nothing in this checkout.
+  in `termproof` therefore finds nothing in this checkout.
 - **Version and changelog drift checks**, and the sdist packaging gate.
 
 Branches under `archive/` here hold Rust work that was never merged to `main` in
@@ -163,11 +165,10 @@ their checker scripts) that only ever existed on `wt/rust-003-ci-gates`.
 
 ## Publishing
 
-Nothing has been published to crates.io yet. Three crates are in scope when it
-happens — `termproof-terminal`, `termproof-core` and `termproof-evidence`.
-`termproof-cli` and `termproof-plugin-protocol` carry `publish = false` on
-purpose; a crates.io name is a one-way door, and those two are not ready to
-spend one.
+Nothing has been published to crates.io yet. One crate is in scope when it
+happens — `termproof`. `termproof-cli` and `termproof-plugin-protocol` carry
+`publish = false` on purpose; a crates.io name is a one-way door, and those two
+are not ready to spend one.
 
 Releases go out through `.github/workflows/publish-crates.yml`, triggered by
 publishing a GitHub release. It derives the publish set and order from

@@ -4,7 +4,7 @@
 This is the oracle half of the cross-runtime differential harness. It drives the
 Python built-in steps over a fixed corpus and writes each case's observed
 ``passed``/``detail`` to ``harness/corpus/steps.json``. The Rust half
-(``crates/termproof-core/tests/differential_steps.rs``) replays the same corpus
+(``crates/termproof/tests/differential_steps.rs``) replays the same corpus
 through the Rust steps and reports the agreement count, so the measurement can
 be reproduced without a Python interpreter.
 

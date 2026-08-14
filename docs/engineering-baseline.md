@@ -139,16 +139,19 @@ and this document is updated.
 ├── docs/
 │   └── engineering-baseline.md # this document
 └── crates/
+    ├── termproof/              # the library: models, config, schema, registries,
+    │                           #   planning, orchestration; `terminal` for PTY/process
+    │                           #   sessions, screen and cast recording; `evidence` for
+    │                           #   rendering, reports, video, baselines, diff, cache
     ├── termproof-cli/          # binary: command parsing, composition, diagnostics
-    ├── termproof-core/         # models, config, schema, registries, planning, orchestration
-    ├── termproof-terminal/     # PTY/process sessions, terminal screen, cast recording
-    ├── termproof-evidence/     # rendering, reports, video, baselines, diff, cache
     └── termproof-plugin-protocol/ # versioned process messages, client/host support
 ```
 
-Crate responsibilities match spec section 5.2. A new crate is created only
-when it has a real independent boundary; it must be added to `members`, this
-document, and the workspace README in the same change.
+Spec section 5.2 lists the three library responsibilities as three crates; they
+are now three module trees inside `termproof`, which is what the spec's header
+records as superseded. A new crate is created only when it has a real
+independent boundary; it must be added to `members`, this document, and the
+workspace README in the same change.
 
 ## 10. Testing policy (baseline)
 
