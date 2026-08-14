@@ -99,13 +99,16 @@ on invocations, consulted by the wait loops `termproof::terminal` already
 runs — and it would add no second recipe model and would not touch the recipe
 format at all.
 
-That is not proposed here. It is a different mechanism from either option, it
-belongs to a different layer, and the scenario-facing session wrapper it would
-hang off is itself unmerged. Recording it as the shape a future answer should
-take is the useful part.
+Such a handler is not proposed here: it is a different mechanism from either
+option and belongs to a different layer, so it wants its own issue rather than
+a paragraph in this one. Recording the shape a future answer should take is the
+useful part. In the meantime the overlay is dismissible today, because
+`terminal::SessionDriver` is where a consumer's own wait loop already lives —
+`screen_contains` before each driving call, or after a `wait_for_text_within`
+that is allowed to fail, is the hand-rolled version of the same thing.
 
-**So: `when` mangles it; a trait covers it by making the consumer write the loop
-by hand; and the mechanism that actually fits is not a recipe construct.**
+**So: `when` mangles it; the mechanism that actually fits is not a recipe
+construct; and a consumer can write the loop today against the driver.**
 
 ### 3. Retry a step whose precondition is racy
 
@@ -217,10 +220,15 @@ supports — including a shape none of the three options describes.
 Keep your own runner. Use this crate for the layers it is actually measured at,
 and for the seams that do not require it to have run anything.
 
-- **`termproof::terminal`** — PTY, tmux and process sessions, plain and
-  attributed screen state, asciicast recording, idle detection. A scenario
-  driving a `Session` directly is ordinary Rust and can branch, loop and retry
-  however it likes.
+- **`termproof::terminal::SessionDriver`** — the scenario-facing wrapper over
+  `Box<dyn Session>`, and where a branching scenario should start. It supplies
+  default timeouts, `screen_contains` / `raw_contains`, and deferred errors, so
+  a failed keystroke is reported once at the assertion — naming the call that
+  first failed — rather than at every `?`. A scenario written against it is
+  ordinary Rust and can branch, loop and retry however it likes. Implement
+  `Session` to write a *backend*; use `SessionDriver` to write a *scenario*.
+- **`termproof::terminal`** more broadly — PTY, tmux and process sessions,
+  plain and attributed screen state, asciicast recording, idle detection.
 - **`termproof::evidence`** — screenshot and video rendering, dedup, Markdown
   and JUnit reports, visual baselines, diff and upload.
 - **`termproof::result::RunResult`** — the seam worth knowing about. It is a
@@ -231,18 +239,40 @@ and for the seams that do not require it to have run anything.
   does not have to have run the scenario in order to compare, report and publish
   it.**
 
+All three of shape 1, 2 and 3 are a few lines against the driver. The optional
+alert, with the detail that matters:
+
+```rust
+use std::time::Duration;
+use termproof::terminal::SessionDriver;
+
+let mut driver = SessionDriver::new(Box::new(session));
+
+// `wait_for_text` treats absent text as a failure — waiting for something is
+// asserting it happens. When the alert is genuinely optional, that verdict is
+// not wanted, so clear it and ask the screen directly.
+driver.wait_for_text_within("Deploy complete", Duration::from_secs(10));
+driver.clear_failure();
+
+if driver.screen_contains("Deploy complete")? {
+    driver.press("enter");
+}
+
+driver.expect_screen_contains("Ready")?;
+```
+
+The `clear_failure` line is the whole of the branch, and it is deliberately
+explicit: turning a failed wait into "carry on" is a decision the scenario
+makes in the open, which is the property a `when` predicate would have hidden
+inside the recipe.
+
 The boundary this decision draws is not "you are on your own". It is: *we do not
 run your branching scenario; we do everything on either side of it.*
 
-Two pieces of in-flight work make that advice more comfortable than it is today,
-and neither has landed at the time of writing — nothing in this decision depends
-on either:
-
-- Issue #17 / PR #23 add `SessionDriver`, a scenario-facing wrapper over
-  `Session` with default timeouts and deferred errors. A branching scenario
-  written against it reads far better than one written against the raw trait.
-- Issue #15 is the per-step evidence collector. Until it exists, a consumer's
-  artefact layout is its own.
+One piece of work is still in flight, and nothing in this decision depends on
+it: issue #15, the per-step evidence collector. Until it lands, a consumer that
+wants per-step artefacts renders them through `evidence` itself and owns its own
+artefact layout.
 
 ---
 
@@ -258,9 +288,12 @@ date on it. Any of these should reopen it:
    not lead.
 2. **A handler on the session rather than a construct in the recipe.** Shape 2
    above has an answer that costs neither of the other options' prices, because
-   it lives below the recipe layer. It deserves its own issue against
-   `termproof::terminal` once the session layer settles, and it is not blocked
-   by this decision.
+   it lives below the recipe layer. Now that `SessionDriver` has landed there is
+   somewhere obvious for it to hang, so it deserves its own issue against
+   `termproof::terminal` — registered on the driver, consulted by the wait loops
+   it already runs. It is not blocked by this decision, and a consumer does not
+   have to wait for it: the hand-rolled version is the `screen_contains` check
+   shown above.
 3. **Evidence that the split costs more than it saves** — consumers routinely
    reimplementing step dispatch in order to get branching, and their
    reimplementations drifting from the built-ins. That would mean the boundary

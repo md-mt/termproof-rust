@@ -112,9 +112,9 @@ nothing here should be read as a claim that it behaves the same way.
   - **A recipe cannot branch on what it observes**, and that is a decision
     rather than a gap. Polling until something renders and acting only if it
     did, dismissing an overlay that may or may not appear, and retrying a racy
-    step all belong in a consumer's own runner. What the crate offers such a
-    consumer instead — and why a `when` predicate and a second, imperative
-    recipe model were both declined — is
+    step all belong in a consumer's own runner, written against `SessionDriver`
+    above. What the crate offers such a consumer instead — and why a `when`
+    predicate and a second, imperative recipe model were both declined — is
     [`docs/conditional-recipes.md`](docs/conditional-recipes.md).
   - **Failures are not contained.** RUST-009 (issue #2) — turning recipe, step,
     plugin, process and PTY failures into structured results — is untouched

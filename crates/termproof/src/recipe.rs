@@ -18,10 +18,11 @@
 //! is ignored by both runtimes, so a `when` this crate honoured would be one
 //! the Python oracle silently skipped, and a single recipe file would mean two
 //! different things. Consumers with a branching scenario keep their own runner,
-//! drive [`crate::terminal`] directly, and build a [`crate::result::RunResult`]
-//! themselves — which keeps [`crate::parity`], [`crate::before_after`] and the
-//! reporters available to them. See `docs/conditional-recipes.md` for the three
-//! scenarios this was weighed against and the conditions that would reopen it.
+//! drive a session through [`crate::terminal::SessionDriver`], and build a
+//! [`crate::result::RunResult`] themselves — which keeps [`crate::parity`],
+//! [`crate::before_after`] and the reporters available to them. See
+//! `docs/conditional-recipes.md` for the three scenarios this was weighed
+//! against and the conditions that would reopen it.
 
 use std::collections::HashMap;
 use std::path::Path;
