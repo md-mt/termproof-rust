@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Rendering a screen to an image.
 //!
 //! [`render_svg`](crate::render::render_svg) takes text and emits one colour on

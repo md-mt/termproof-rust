@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Provenance for the binary under test.
 //!
 //! A verification report is only as useful as its answer to "which build was

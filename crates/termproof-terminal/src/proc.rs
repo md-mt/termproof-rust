@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Running child processes with a deadline.
 //!
 //! `std::process` has no timeout. A tool that hangs — a renderer waiting on a

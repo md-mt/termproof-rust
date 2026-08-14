@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Publishing evidence somewhere a reviewer can open it.
 //!
 //! A screenshot on the machine that produced it helps nobody. This module owns

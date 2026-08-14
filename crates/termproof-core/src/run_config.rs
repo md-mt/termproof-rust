@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! A run described by a file rather than by a command line.
 //!
 //! Distinct from [`crate::config`], which registers plugins — action name to

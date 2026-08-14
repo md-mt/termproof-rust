@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Compare two verification runs and report where they disagree.
 //!
 //! Useful whenever two things are supposed to produce the same verdicts and you

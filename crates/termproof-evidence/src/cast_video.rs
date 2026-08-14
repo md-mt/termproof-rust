@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Video from a cast, rendered by the same code as the screenshots.
 //!
 //! [`AggFfmpegBackend`](crate::video::AggFfmpegBackend) shells out to `agg`,

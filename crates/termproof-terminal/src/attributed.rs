@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! A terminal screen with per-cell attributes, and SVG rendering.
 //!
 //! [`TerminalScreen`](crate::screen::TerminalScreen) answers "what text is on

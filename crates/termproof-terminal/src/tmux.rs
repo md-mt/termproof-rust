@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! A [`Session`] backed by a real terminal, via tmux.
 //!
 //! The pty backend reconstructs the screen: bytes go through an emulator here

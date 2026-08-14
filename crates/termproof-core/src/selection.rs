@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Choosing which recipes to run for a set of changed files.
 //!
 //! Running a whole suite on every change is the honest default and, past a

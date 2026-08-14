@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Not re-rendering a screen that has not changed.
 //!
 //! A recipe captures evidence either side of an action, and plenty of actions

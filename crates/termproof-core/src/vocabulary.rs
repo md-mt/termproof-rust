@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! Screen predicates for asserting on terminal output.
 //!
 //! Every suite that drives a TUI ends up writing "did this fail?" by hand, and

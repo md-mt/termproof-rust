@@ -1,5 +1,3 @@
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
-
 //! What changed between two runs of the same suite.
 //!
 //! Where [`crate::parity`] asks "do these two agree?", this asks the narrower
