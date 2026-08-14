@@ -94,14 +94,16 @@ nothing here should be read as a claim that it behaves the same way.
     three plug into: `EvidenceCollector` records labelled captures as a run
     proceeds and `publish` renders, dedupes, uploads and writes an
     `evidence.json` manifest in one pass. It sits **beside** `RunResult` rather
-    than inside it — join the two with
-    `result.artifacts.extend(manifest.artifacts())`, which leaves the result
-    payload and every existing reader of it untouched. Every captured step
-    gets its screen *text* on disk, not only its PNG: an image shows a human
-    what happened, it does not show what an assertion matched against.
-    Captures read through `ScreenSource`, a read-only view of `Session` with a
-    blanket impl, so every backend is one for free and a replayed cast or a
-    test fixture can be captured without pretending to own a process.
+    than inside it — join the two with `manifest.attach_to(&mut result)`, which
+    adds one artifact entry, refuses a manifest from a different run, and
+    leaves the result payload and every existing reader of it untouched. Every
+    captured step gets its screen *text* on disk, not only its PNG: an image
+    shows a human what happened, it does not show what an assertion matched
+    against. Captures read through `ScreenSource`, a one-method view of
+    `Session` with a blanket impl, so every backend is one for free and a
+    replayed cast or a test fixture can be captured without pretending to own
+    a process — and text, grid and raw log come back from a single call, so
+    they cannot end up describing different instants of a running program.
   - The `termproof` crate root grew `parity`, which compares two runs and
     reports where they disagree; `before_after`, which reports which outcomes
     flipped; `selection`, which maps a changeset onto recipes via `ci_paths`;

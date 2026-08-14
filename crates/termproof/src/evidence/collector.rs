@@ -8,19 +8,24 @@
 //! into files on disk.
 //!
 //! ```no_run
-//! use termproof::evidence::collector::{EvidenceCollector, EvidencePublisher};
+//! use termproof::evidence::collector::{EvidenceCollector, EvidencePublisher, RunIdentity};
 //! # use termproof::terminal::{InMemorySession, Session};
+//! # use termproof::result::RunResult;
 //! # let mut session = InMemorySession::new(vec![], "/tmp/x.cast".into(), 80, 24);
+//! # fn finished_run() -> RunResult { unimplemented!() }
 //! let mut evidence = EvidenceCollector::new();
 //!
 //! evidence.capture("menu-open", &mut session);
 //! session.press("down").ok();
 //! evidence.capture("moved-down", &mut session);
 //!
-//! let mut publisher = EvidencePublisher::new("/tmp/run-1/evidence");
+//! let run_dir = std::path::Path::new("/tmp/run-1");
+//! let identity = RunIdentity::from_run_dir(run_dir, "login", "default");
+//! let mut publisher = EvidencePublisher::new(run_dir.join("evidence"), identity);
 //! let manifest = evidence.publish(&mut publisher).expect("published");
-//! # let mut result_artifacts = std::collections::BTreeMap::new();
-//! result_artifacts.extend(manifest.artifacts());
+//!
+//! let mut result = finished_run();
+//! manifest.attach_to(&mut result).expect("same run");
 //! ```
 //!
 //! # Capture is eager, publish is deferred
@@ -34,16 +39,23 @@
 //! [`AttributedScreen`], not the PNG, precisely so the comparison is still
 //! possible later.
 //!
-//! # Steps sit *beside* [`RunResult`](crate::result::RunResult), not inside it
+//! # One capture is one instant
 //!
-//! Publishing writes an `evidence.json` manifest and hands back one artifact
-//! entry pointing at it. Join the two with
-//! `result.artifacts.extend(manifest.artifacts())`. `RunResult` is unchanged:
-//! its schema, its serialization and every existing reader are exactly as they
-//! were, and `RunResult::steps` keeps meaning what it has always meant — the
-//! per-step *verdict*, not the per-step evidence. The two models are related
-//! but not the same shape: a recipe commonly captures either side of one step,
-//! and a failure capture has no step of its own at all.
+//! [`ScreenSource`] has a single method for a reason: reading the text and the
+//! grid through two calls lets a running program advance between them, and the
+//! artifacts then disagree about which instant they describe. See
+//! [`ScreenSource::capture_screen`].
+//!
+//! # Steps sit *beside* [`RunResult`], not inside it
+//!
+//! Publishing writes an `evidence.json` manifest;
+//! [`attach_to`](EvidenceManifest::attach_to) puts one artifact entry on the
+//! result and refuses a manifest that belongs to a different run. `RunResult`
+//! is unchanged: its schema, its serialization and every existing reader are
+//! exactly as they were, and `RunResult::steps` keeps meaning what it has
+//! always meant — the per-step *verdict*, not the per-step evidence. The two
+//! models are related but not the same shape: a recipe commonly captures
+//! either side of one step, and a failure capture has no step of its own.
 //!
 //! # Screen text is always written
 //!
@@ -55,9 +67,9 @@
 //! worth grepping.
 //!
 //! Raw output is kept only for [`capture_failure`](EvidenceCollector::capture_failure).
-//! [`ScreenSource::raw_output`] is the whole log so far rather than the delta,
-//! so a copy per checkpoint is quadratic in the length of the run and every
-//! copy but the last is a prefix of a later one.
+//! A session's raw output is the whole log so far rather than the delta, so a
+//! copy per checkpoint is quadratic in the length of the run and every copy
+//! but the last is a prefix of a later one.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -67,6 +79,7 @@ use serde::{Deserialize, Serialize};
 use crate::evidence::dedup::Deduper;
 use crate::evidence::screenshot::ScreenshotRenderer;
 use crate::evidence::uploader::ArtifactUploader;
+use crate::result::RunResult;
 use crate::store::{atomic_write_text, sanitize_component};
 use crate::terminal::attributed::{
     attributed_screen_from_text, AttributedScreen, DEFAULT_COLUMNS, DEFAULT_ROWS,
@@ -82,6 +95,27 @@ pub const MANIFEST_FILE: &str = "evidence.json";
 /// Longest label fragment allowed in a generated filename.
 const MAX_LABEL_IN_FILENAME: usize = 40;
 
+/// Whether a capture should carry the raw output log with it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawOutput {
+    /// Include it — the caller is recording a failure.
+    Keep,
+    /// Leave it out. The log is cumulative, so a copy per checkpoint is
+    /// quadratic and every copy but the last is a prefix of a later one.
+    Skip,
+}
+
+/// One self-consistent reading of a screen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenCapture {
+    /// Screen text at the captured instant.
+    pub screen: String,
+    /// The grid at the same instant, when the source has attributes to report.
+    pub attributed: Option<AttributedScreen>,
+    /// The raw output log, when [`RawOutput::Keep`] was asked for.
+    pub raw_output: Option<String>,
+}
+
 /// Something a collector can read a screen from.
 ///
 /// # Why this is not just [`Session`]
@@ -94,50 +128,76 @@ const MAX_LABEL_IN_FILENAME: usize = 40;
 /// `close()` or `cast_path()` honestly.
 ///
 /// A second trait that merely *duplicates* `Session` would be the worse
-/// outcome, so this one is not parallel to it — it is a read-only view of it.
-/// The blanket impl below means every `Session`, present or future, is a
+/// outcome, so this one is not parallel to it — it is a view of it. The
+/// blanket impl below means every `Session`, present or future, is a
 /// `ScreenSource` for free: no backend implements anything twice, and the two
 /// cannot drift apart because there is no way to have one without the other.
-///
-/// The signature differences are forced rather than cosmetic.
-/// `screen(&mut self) -> String` takes `&mut` because
-/// [`Session::screen_attributed`] already does, and returns an owned string
-/// because a source that has to *reconstruct* a screen has no buffer to lend.
-///
-/// That `&self`/`&mut self` difference also settles what would otherwise be
-/// the blanket impl's one cost. With both traits in scope, `session.screen()`
-/// is not ambiguous: autoref reaches [`Session::screen`] first and existing
-/// call sites keep the borrow they had. Reach for this one by name —
-/// `ScreenSource::screen(&mut session)` — on a receiver that is both.
 pub trait ScreenSource {
-    /// Current screen text.
-    fn screen(&mut self) -> String;
-
-    /// The whole raw output log so far, not the delta since the last read.
-    fn raw_output(&mut self) -> String;
-
-    /// The screen with per-cell attributes, if this source can produce one.
+    /// Read the screen once, as of one instant.
     ///
-    /// `None` is a legitimate answer, and the default. The collector then
-    /// builds a plain grid from the text, so deduplication and rendering work
-    /// the same way for a source that has no colours to report.
-    fn screen_attributed(&mut self) -> Option<AttributedScreen> {
-        None
-    }
+    /// # Why this is one method and not three
+    ///
+    /// Text, grid and raw log have to describe the same moment, and against a
+    /// live program they will not if they are fetched separately. This is not
+    /// hypothetical for the backends in this crate:
+    ///
+    /// - the pty path serves [`Session::screen`] from a snapshot taken at the
+    ///   last sync point, while [`Session::screen_attributed`] reads the live
+    ///   screen mutex a reader thread is still feeding;
+    /// - the tmux path re-runs `capture-pane` *inside*
+    ///   [`Session::screen_attributed`] and replaces its cached screen and raw
+    ///   buffers as a side effect — which, after a close or a dead session,
+    ///   can replace real text with an empty capture.
+    ///
+    /// Fetched one at a time, the result is a manifest that validates
+    /// perfectly and lies: `step-NN.txt` describing the screen before an
+    /// action while `step-NN.png` and the deduplication verdict describe the
+    /// screen after it. Reading once removes the window rather than narrowing
+    /// it, so an implementor cannot reintroduce the bug by being careless
+    /// about call order.
+    fn capture_screen(&mut self, raw: RawOutput) -> ScreenCapture;
 }
 
 impl<T: Session + ?Sized> ScreenSource for T {
-    fn screen(&mut self) -> String {
-        Session::screen(self).to_string()
+    fn capture_screen(&mut self, raw: RawOutput) -> ScreenCapture {
+        // Order is the whole point of doing this in one call.
+        //
+        // `screen_attributed` is the live read on every backend that has one,
+        // and on the tmux path it is also the refresh: it replaces the cached
+        // screen and raw buffers before returning. Taking it first means the
+        // text and log read afterwards describe the state it just established
+        // rather than the one before it.
+        let attributed = Session::screen_attributed(self);
+        let screen = match &attributed {
+            // One grid, one text. Deriving the text from the same cells the
+            // PNG and the dedup fingerprint come from is what closes the
+            // window on the pty path, where `Session::screen` is a snapshot
+            // and the grid is live. `grid_text` applies the same
+            // normalisation `Session::screen` does, so the file still reads as
+            // the thing an assertion matched against.
+            Some(grid) => grid_text(grid),
+            None => Session::screen(self).to_string(),
+        };
+        let raw_output = match raw {
+            RawOutput::Keep => Some(Session::raw_output(self).to_string()),
+            RawOutput::Skip => None,
+        };
+        ScreenCapture {
+            screen,
+            attributed,
+            raw_output,
+        }
     }
+}
 
-    fn raw_output(&mut self) -> String {
-        Session::raw_output(self).to_string()
+/// Grid text, normalised the way a session normalises its own screen text:
+/// trailing whitespace off each row, then trailing blank rows dropped.
+fn grid_text(screen: &AttributedScreen) -> String {
+    let mut lines = screen.text_lines(true);
+    while lines.last().is_some_and(|line| line.is_empty()) {
+        lines.pop();
     }
-
-    fn screen_attributed(&mut self) -> Option<AttributedScreen> {
-        Session::screen_attributed(self)
-    }
+    lines.join("\n")
 }
 
 /// Why a step was captured.
@@ -148,6 +208,15 @@ pub enum CaptureKind {
     Checkpoint,
     /// The screen at the moment something failed.
     Failure,
+}
+
+impl CaptureKind {
+    fn raw_output(self) -> RawOutput {
+        match self {
+            CaptureKind::Failure => RawOutput::Keep,
+            CaptureKind::Checkpoint => RawOutput::Skip,
+        }
+    }
 }
 
 /// One captured screen, in capture order.
@@ -202,9 +271,8 @@ impl EvidenceCollector {
 
     /// A collector whose text-only fallback grid is `columns` × `rows`.
     ///
-    /// Only used for sources that return `None` from
-    /// [`ScreenSource::screen_attributed`]; an attributed screen carries its
-    /// own dimensions.
+    /// Only used for sources that report no attributed screen; a grid that
+    /// exists carries its own dimensions.
     pub fn with_grid(columns: usize, rows: usize) -> Self {
         EvidenceCollector {
             columns,
@@ -224,21 +292,17 @@ impl EvidenceCollector {
     }
 
     fn record<S: ScreenSource + ?Sized>(&mut self, label: &str, kind: CaptureKind, source: &mut S) {
-        let screen = source.screen();
-        let attributed = source
-            .screen_attributed()
-            .unwrap_or_else(|| attributed_screen_from_text(&screen, self.columns, self.rows));
-        let raw_output = match kind {
-            CaptureKind::Failure => Some(source.raw_output()),
-            CaptureKind::Checkpoint => None,
-        };
+        let capture = source.capture_screen(kind.raw_output());
+        let attributed = capture.attributed.unwrap_or_else(|| {
+            attributed_screen_from_text(&capture.screen, self.columns, self.rows)
+        });
         self.steps.push(CapturedStep {
             index: self.steps.len(),
             label: label.to_string(),
             kind,
-            screen,
+            screen: capture.screen,
             attributed,
-            raw_output,
+            raw_output: capture.raw_output,
         });
     }
 
@@ -271,9 +335,9 @@ impl EvidenceCollector {
         let mut deduper = Deduper::default();
         // The image the deduper's answer refers to. `Deduper::check` reports a
         // label, and labels are caller-supplied and may repeat; tracking the
-        // artifact alongside is exact because the deduper only ever looks back
-        // one rendered step, which is this entry.
-        let mut last_rendered: Option<(String, Option<String>)> = None;
+        // step alongside is exact, because the deduper only ever looks back one
+        // rendered step and this is it.
+        let mut last_rendered: Option<(ReusedFrom, String, Option<String>)> = None;
         let mut published = Vec::with_capacity(self.steps.len());
 
         for step in &self.steps {
@@ -303,9 +367,9 @@ impl EvidenceCollector {
             };
 
             match deduper.check(&step.label, &step.attributed) {
-                Some(previous) => {
-                    entry.same_as = Some(previous.to_string());
-                    if let Some((png, url)) = &last_rendered {
+                Some(_) => {
+                    if let Some((source, png, url)) = &last_rendered {
+                        entry.same_as = Some(source.clone());
                         entry.screenshot = Some(png.clone());
                         entry.url = url.clone();
                     }
@@ -320,7 +384,14 @@ impl EvidenceCollector {
                             let url = publisher.uploader.as_mut().and_then(|u| u.upload(&path));
                             entry.screenshot = Some(path.clone());
                             entry.url = url.clone();
-                            last_rendered = Some((path, url));
+                            last_rendered = Some((
+                                ReusedFrom {
+                                    index: step.index,
+                                    label: step.label.clone(),
+                                },
+                                path,
+                                url,
+                            ));
                         }
                         Err(message) => {
                             // `Deduper::forget`'s contract. Without it the next
@@ -339,6 +410,7 @@ impl EvidenceCollector {
 
         let manifest = EvidenceManifest {
             manifest_version: EVIDENCE_MANIFEST_VERSION,
+            run: publisher.identity.clone(),
             steps: published,
             path: publisher.manifest_path(),
         };
@@ -347,10 +419,70 @@ impl EvidenceCollector {
     }
 }
 
+/// Which run a manifest belongs to.
+///
+/// Evidence sits beside [`RunResult`] rather than inside it, so nothing about
+/// the file layout stops a caller pointing run A's result at run B's evidence.
+/// This is what lets a reader — and [`EvidenceManifest::attach_to`] — notice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunIdentity {
+    /// Recipe this evidence came from; matches [`RunResult::recipe_name`].
+    pub recipe_name: String,
+    /// Renderer this evidence came from; matches [`RunResult::renderer`].
+    pub renderer: String,
+    /// Identifier for this run in particular.
+    ///
+    /// Recipe and renderer separate two different runs; they do not separate
+    /// two runs of the *same* recipe. [`RunResult`] has no field to check this
+    /// against, so it is recorded rather than verified: a reader holding a run
+    /// directory can compare it, and two manifests can be told apart.
+    pub run_id: String,
+}
+
+impl RunIdentity {
+    /// Identity from its three parts.
+    pub fn new(
+        recipe_name: impl Into<String>,
+        renderer: impl Into<String>,
+        run_id: impl Into<String>,
+    ) -> Self {
+        RunIdentity {
+            recipe_name: recipe_name.into(),
+            renderer: renderer.into(),
+            run_id: run_id.into(),
+        }
+    }
+
+    /// Identity for the run that produced `run_dir`, taking the directory's
+    /// own name as the run id.
+    ///
+    /// [`new_run_dir`](crate::store::new_run_dir) already builds a name unique
+    /// per timestamp, pid and process entropy, so it is the run identifier the
+    /// crate has rather than a second one invented here.
+    pub fn from_run_dir(run_dir: &Path, recipe_name: &str, renderer: &str) -> Self {
+        let run_id = run_dir
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        RunIdentity::new(recipe_name, renderer, run_id)
+    }
+
+    /// Whether `result` is the run this identity describes.
+    ///
+    /// Compares what the two documents share. See [`run_id`](Self::run_id) for
+    /// what this cannot rule out.
+    pub fn matches(&self, result: &RunResult) -> bool {
+        self.recipe_name == result.recipe_name && self.renderer == result.renderer
+    }
+}
+
 /// Where published evidence goes and how it gets there.
 pub struct EvidencePublisher {
     /// Directory the artifacts are written into.
     pub dir: PathBuf,
+    /// Which run this evidence belongs to. Required rather than optional: a
+    /// manifest that cannot say whose it is cannot be checked by anyone.
+    pub identity: RunIdentity,
     /// Renders a captured grid to a PNG.
     pub renderer: ScreenshotRenderer,
     /// Optional upload seam. Uploads are best-effort: a failure leaves the
@@ -362,16 +494,19 @@ impl std::fmt::Debug for EvidencePublisher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EvidencePublisher")
             .field("dir", &self.dir)
+            .field("identity", &self.identity)
             .field("uploader", &self.uploader.is_some())
             .finish()
     }
 }
 
 impl EvidencePublisher {
-    /// Publish into `dir` with the default renderer and no uploader.
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
+    /// Publish `identity`'s evidence into `dir` with the default renderer and
+    /// no uploader.
+    pub fn new(dir: impl Into<PathBuf>, identity: RunIdentity) -> Self {
         EvidencePublisher {
             dir: dir.into(),
+            identity,
             renderer: ScreenshotRenderer::new(),
             uploader: None,
         }
@@ -395,6 +530,19 @@ impl EvidencePublisher {
     }
 }
 
+/// The step whose screenshot another step reuses.
+///
+/// Both halves, because either alone is not enough: labels are caller-supplied
+/// and may repeat, so `"check"` does not say *which* `check`; the index alone
+/// says which but makes the manifest unreadable without cross-referencing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReusedFrom {
+    /// Capture-order index of the step that owns the image.
+    pub index: usize,
+    /// That step's label.
+    pub label: String,
+}
+
 /// One step as it came out of [`EvidenceCollector::publish`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublishedStep {
@@ -414,9 +562,9 @@ pub struct PublishedStep {
     /// Shareable URL for `screenshot`, when an uploader was configured and
     /// succeeded.
     pub url: Option<String>,
-    /// Label of the earlier step whose image this one reuses, when its screen
-    /// was identical to the one immediately before it.
-    pub same_as: Option<String>,
+    /// The earlier step whose image this one reuses, when its screen was
+    /// identical to the one immediately before it.
+    pub same_as: Option<ReusedFrom>,
     /// Why this step has no screenshot.
     pub error: Option<String>,
 }
@@ -426,6 +574,8 @@ pub struct PublishedStep {
 pub struct EvidenceManifest {
     /// Schema version of this document, present from its first release.
     pub manifest_version: u32,
+    /// Which run this evidence belongs to.
+    pub run: RunIdentity,
     /// Published steps, in capture order.
     pub steps: Vec<PublishedStep>,
     /// Where the manifest was written. Not serialized: a file does not need to
@@ -441,8 +591,30 @@ impl EvidenceManifest {
         &self.path
     }
 
-    /// Entries to merge into
-    /// [`RunResult::artifacts`](crate::result::RunResult::artifacts).
+    /// Point `result` at this manifest, refusing a mismatched pair.
+    ///
+    /// This is the supported way to join the two documents. Evidence sits
+    /// beside [`RunResult`], so the pairing is the one thing the layout cannot
+    /// enforce on its own — an unchecked `artifacts` insert would let run A's
+    /// evidence hang off run B's result with both files still schema-valid.
+    ///
+    /// Returns `Err` describing the mismatch, and leaves `result` untouched.
+    pub fn attach_to(&self, result: &mut RunResult) -> Result<(), String> {
+        if !self.run.matches(result) {
+            return Err(format!(
+                "evidence for {}/{} cannot be attached to a result for {}/{}",
+                self.run.recipe_name, self.run.renderer, result.recipe_name, result.renderer,
+            ));
+        }
+        result.artifacts.extend(self.artifacts());
+        Ok(())
+    }
+
+    /// Entries pointing at this manifest, unchecked.
+    ///
+    /// Prefer [`attach_to`](Self::attach_to), which will not pair a manifest
+    /// with a result from another run. This is for callers building an index
+    /// that is not a [`RunResult`].
     ///
     /// One entry, not one per step: the manifest is the index, and a caller
     /// that wants the per-step paths reads it rather than having them
@@ -476,6 +648,7 @@ mod tests {
     use super::*;
     use crate::terminal::attributed::attributed_screen_from_ansi_text;
     use crate::terminal::inmemory::InMemorySession;
+    use crate::terminal::screen::TerminalScreen;
 
     /// A source that is not a `Session` — the case the trait exists for.
     struct Replay {
@@ -484,13 +657,100 @@ mod tests {
     }
 
     impl ScreenSource for Replay {
-        fn screen(&mut self) -> String {
-            let frame = self.frames[self.at].clone();
+        fn capture_screen(&mut self, raw: RawOutput) -> ScreenCapture {
+            let screen = self.frames[self.at].clone();
             self.at += 1;
-            frame
+            ScreenCapture {
+                screen,
+                attributed: None,
+                raw_output: match raw {
+                    RawOutput::Keep => Some(self.frames[..self.at].join("")),
+                    RawOutput::Skip => None,
+                },
+            }
         }
-        fn raw_output(&mut self) -> String {
-            self.frames[..self.at].join("")
+    }
+
+    /// A session whose grid and snapshot text disagree, the way a live pty's
+    /// do: `screen()` serves the last sync point, the grid is now.
+    struct DriftingSession {
+        snapshot: InMemorySession,
+        live: &'static str,
+    }
+
+    impl DriftingSession {
+        fn new(stale: &str, live: &'static str) -> Self {
+            let mut snapshot = InMemorySession::new(vec![], PathBuf::from("/tmp/x.cast"), 80, 24);
+            snapshot.set_screen(stale);
+            DriftingSession { snapshot, live }
+        }
+    }
+
+    impl Session for DriftingSession {
+        fn send_text(&mut self, t: &str) -> Result<(), crate::terminal::error::SessionError> {
+            self.snapshot.send_text(t)
+        }
+        fn send_line(&mut self, t: &str) -> Result<(), crate::terminal::error::SessionError> {
+            self.snapshot.send_line(t)
+        }
+        fn press(&mut self, k: &str) -> Result<(), crate::terminal::error::SessionError> {
+            self.snapshot.press(k)
+        }
+        fn wait_for_text(
+            &mut self,
+            t: &str,
+            d: std::time::Duration,
+        ) -> Result<bool, crate::terminal::error::SessionError> {
+            self.snapshot.wait_for_text(t, d)
+        }
+        fn wait_for_idle(
+            &mut self,
+            s: std::time::Duration,
+            t: std::time::Duration,
+        ) -> Result<bool, crate::terminal::error::SessionError> {
+            self.snapshot.wait_for_idle(s, t)
+        }
+        fn wait_for_exit(
+            &mut self,
+            t: std::time::Duration,
+        ) -> Result<Option<i32>, crate::terminal::error::SessionError> {
+            self.snapshot.wait_for_exit(t)
+        }
+        fn read_available(
+            &mut self,
+            t: std::time::Duration,
+        ) -> Result<(), crate::terminal::error::SessionError> {
+            self.snapshot.read_available(t)
+        }
+        fn is_alive(&mut self) -> bool {
+            self.snapshot.is_alive()
+        }
+        fn close(&mut self) -> Result<(), crate::terminal::error::SessionError> {
+            self.snapshot.close()
+        }
+        fn screen(&self) -> &str {
+            self.snapshot.screen()
+        }
+        fn screen_attributed(&mut self) -> Option<AttributedScreen> {
+            Some(attributed_screen_from_text(self.live, 80, 24))
+        }
+        fn raw_output(&self) -> &str {
+            self.snapshot.raw_output()
+        }
+        fn exit_code(&self) -> Option<i32> {
+            self.snapshot.exit_code()
+        }
+        fn cols(&self) -> u16 {
+            self.snapshot.cols()
+        }
+        fn rows(&self) -> u16 {
+            self.snapshot.rows()
+        }
+        fn argv(&self) -> &[String] {
+            self.snapshot.argv()
+        }
+        fn cast_path(&self) -> &Path {
+            self.snapshot.cast_path()
         }
     }
 
@@ -500,23 +760,44 @@ mod tests {
         s
     }
 
+    fn identity() -> RunIdentity {
+        RunIdentity::new("login", "default", "20240101-000000-000000-login-default-1")
+    }
+
+    fn run_result(recipe_name: &str, renderer: &str) -> RunResult {
+        RunResult {
+            result_version: Some(crate::result::RESULT_SCHEMA_VERSION),
+            recipe_name: recipe_name.to_string(),
+            passed: true,
+            exit_code: Some(0),
+            duration_seconds: 1.0,
+            priority: "P0".to_string(),
+            execution: "scripted".to_string(),
+            renderer: renderer.to_string(),
+            score: 1.0,
+            steps: vec![],
+            assertions: vec![],
+            artifacts: BTreeMap::new(),
+        }
+    }
+
     /// A publisher whose renderer touches the PNG instead of shelling out.
     fn publisher(dir: &Path) -> EvidencePublisher {
-        EvidencePublisher::new(dir).with_renderer(ScreenshotRenderer::with_runner(Box::new(
-            |_, args, _| std::fs::write(&args[1], b"png").map_err(|e| e.to_string()),
-        )))
+        EvidencePublisher::new(dir, identity()).with_renderer(ScreenshotRenderer::with_runner(
+            Box::new(|_, args, _| std::fs::write(&args[1], b"png").map_err(|e| e.to_string())),
+        ))
     }
 
     /// A publisher that records which PNGs were asked for.
     fn counting_publisher(dir: &Path) -> (EvidencePublisher, Arc<Mutex<Vec<String>>>) {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let sink = seen.clone();
-        let publisher = EvidencePublisher::new(dir).with_renderer(ScreenshotRenderer::with_runner(
-            Box::new(move |_, args, _| {
+        let publisher = EvidencePublisher::new(dir, identity()).with_renderer(
+            ScreenshotRenderer::with_runner(Box::new(move |_, args, _| {
                 sink.lock().expect("poisoned").push(args[1].clone());
                 std::fs::write(&args[1], b"png").map_err(|e| e.to_string())
-            }),
-        ));
+            })),
+        );
         (publisher, seen)
     }
 
@@ -532,20 +813,41 @@ mod tests {
         let mut boxed: Box<dyn Session> = Box::new(session("menu"));
         collector.capture("dyn", boxed.as_mut());
 
-        assert_eq!(collector.len(), 2);
-        assert_eq!(collector.steps()[1].screen, "menu");
+        // And through the scenario-facing layer, which is what a caller
+        // driving a run actually holds.
+        let mut driver = crate::terminal::driver::SessionDriver::new(Box::new(session("menu")));
+        collector.capture("driver", driver.session_mut());
+
+        assert_eq!(collector.len(), 3);
+        assert!(collector.steps().iter().all(|s| s.screen == "menu"));
     }
 
     #[test]
-    fn session_screen_still_wins_with_both_traits_in_scope() {
-        // The blanket impl's one hazard, pinned. `Session::screen` takes
-        // `&self` and this trait's takes `&mut self`, so autoref reaches the
-        // former first and every existing `session.screen()` keeps the borrow
-        // it had — the annotation below is the assertion, not the assert.
-        let mut s = session("menu");
-        let borrowed: &str = s.screen();
-        assert_eq!(borrowed, "menu");
-        assert_eq!(ScreenSource::screen(&mut s), "menu");
+    fn text_and_grid_describe_the_same_instant() {
+        // The pty shape: `screen()` serves a snapshot from the last sync point
+        // while the grid is read live. Fetched separately, the text file would
+        // say "before" while the PNG and the dedup verdict say "after".
+        let mut drifting = DriftingSession::new("before", "after");
+        let mut collector = EvidenceCollector::new();
+        collector.capture("mid-flight", &mut drifting);
+
+        let step = &collector.steps()[0];
+        assert_eq!(step.screen, "after");
+        assert_eq!(step.attributed.to_text(true), "after");
+    }
+
+    #[test]
+    fn grid_text_matches_what_a_session_reports_as_its_screen() {
+        // Deriving the text from the grid is only safe if it normalises the
+        // same way — otherwise the file stops reading as the thing an
+        // assertion matched against, which is the reason it is written.
+        let mut screen = TerminalScreen::new(80, 24);
+        screen.feed_str("hello\r\n  world  \r\n");
+        assert_eq!(grid_text(&screen.attributed()), screen.contents());
+
+        let mut empty = TerminalScreen::new(80, 24);
+        empty.feed_str("");
+        assert_eq!(grid_text(&empty.attributed()), empty.contents());
     }
 
     #[test]
@@ -645,10 +947,43 @@ mod tests {
         let manifest = collector.publish(&mut publisher).expect("published");
 
         assert_eq!(rendered.lock().expect("poisoned").len(), 1);
-        assert_eq!(manifest.steps[1].same_as.as_deref(), Some("before"));
+        assert_eq!(
+            manifest.steps[1].same_as,
+            Some(ReusedFrom {
+                index: 0,
+                label: "before".to_string()
+            })
+        );
         assert_eq!(manifest.steps[0].screenshot, manifest.steps[1].screenshot);
         assert_ne!(manifest.steps[0].screen_text, manifest.steps[1].screen_text);
         assert!(Path::new(&manifest.steps[1].screen_text).exists());
+    }
+
+    #[test]
+    fn a_reused_image_names_which_step_owns_it_even_when_labels_repeat() {
+        // Labels are caller-supplied and may repeat. `same_as: "check"` in a
+        // run with two steps called `check` points at nothing a reader can
+        // resolve, so the index travels with it.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut s = session("one");
+        let mut collector = EvidenceCollector::new();
+        collector.capture("check", &mut s);
+        s.set_screen("two");
+        collector.capture("other", &mut s);
+        s.set_screen("three");
+        collector.capture("check", &mut s);
+        collector.capture("after", &mut s);
+
+        let manifest = collector
+            .publish(&mut publisher(dir.path()))
+            .expect("published");
+        let reused = manifest.steps[3].same_as.as_ref().expect("reused");
+        assert_eq!(reused.label, "check");
+        assert_eq!(reused.index, 2);
+        assert_eq!(
+            manifest.steps[3].screenshot, manifest.steps[2].screenshot,
+            "the index must name the step that actually owns the image"
+        );
     }
 
     #[test]
@@ -676,14 +1011,12 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         struct Coloured(&'static str);
         impl ScreenSource for Coloured {
-            fn screen(&mut self) -> String {
-                "hi".to_string()
-            }
-            fn raw_output(&mut self) -> String {
-                String::new()
-            }
-            fn screen_attributed(&mut self) -> Option<AttributedScreen> {
-                Some(attributed_screen_from_ansi_text(self.0, 20, 2))
+            fn capture_screen(&mut self, _: RawOutput) -> ScreenCapture {
+                ScreenCapture {
+                    screen: "hi".to_string(),
+                    attributed: Some(attributed_screen_from_ansi_text(self.0, 20, 2)),
+                    raw_output: None,
+                }
             }
         }
         let mut collector = EvidenceCollector::new();
@@ -703,7 +1036,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let attempts = Arc::new(Mutex::new(0usize));
         let sink = attempts.clone();
-        let mut publisher = EvidencePublisher::new(dir.path()).with_renderer(
+        let mut publisher = EvidencePublisher::new(dir.path(), identity()).with_renderer(
             ScreenshotRenderer::with_runner(Box::new(move |_, _, _| {
                 *sink.lock().expect("poisoned") += 1;
                 Err("rsvg-convert missing".to_string())
@@ -785,13 +1118,14 @@ mod tests {
         let written = std::fs::read_to_string(dir.path().join(MANIFEST_FILE)).expect("read");
         let parsed: EvidenceManifest = serde_json::from_str(&written).expect("parse");
         assert_eq!(parsed.manifest_version, EVIDENCE_MANIFEST_VERSION);
+        assert_eq!(parsed.run, identity());
         assert_eq!(parsed.steps, manifest.steps);
         // Not serialized: the document does not record its own location.
         assert!(!written.contains(MANIFEST_FILE));
     }
 
     #[test]
-    fn artifacts_is_one_entry_pointing_at_the_manifest() {
+    fn attaching_to_the_matching_run_records_the_manifest() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut collector = EvidenceCollector::new();
         collector.capture("only", &mut session("x"));
@@ -799,12 +1133,55 @@ mod tests {
             .publish(&mut publisher(dir.path()))
             .expect("published");
 
-        let artifacts = manifest.artifacts();
-        assert_eq!(artifacts.len(), 1);
+        let mut result = run_result("login", "default");
+        manifest.attach_to(&mut result).expect("attached");
         assert_eq!(
-            artifacts.get("evidence_manifest").map(String::as_str),
+            result
+                .artifacts
+                .get("evidence_manifest")
+                .map(String::as_str),
             Some(path_string(&dir.path().join(MANIFEST_FILE)).as_str())
         );
+    }
+
+    #[test]
+    fn evidence_from_another_run_is_refused() {
+        // The cost of putting steps beside `RunResult` instead of inside it:
+        // nothing in the file layout stops the wrong pair being made, so the
+        // attach API is where it gets caught.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut collector = EvidenceCollector::new();
+        collector.capture("only", &mut session("x"));
+        let manifest = collector
+            .publish(&mut publisher(dir.path()))
+            .expect("published");
+
+        let mut other = run_result("checkout", "default");
+        let error = manifest.attach_to(&mut other).expect_err("refused");
+        assert!(error.contains("login"), "{error}");
+        assert!(error.contains("checkout"), "{error}");
+        // Refused means untouched, not half-attached.
+        assert!(other.artifacts.is_empty());
+
+        let mut other_renderer = run_result("login", "tmux");
+        assert!(manifest.attach_to(&mut other_renderer).is_err());
+    }
+
+    #[test]
+    fn a_run_id_comes_from_the_run_directory() {
+        // Recipe and renderer separate two different recipes; they do not
+        // separate two runs of the same one. `new_run_dir` already builds a
+        // name unique per timestamp, pid and entropy, so that is the run id
+        // rather than a second one invented here.
+        let base = Path::new("/tmp/out");
+        let first = crate::store::new_run_dir(base, "login", "default");
+        let identity = RunIdentity::from_run_dir(&first, "login", "default");
+        assert_eq!(
+            identity.run_id,
+            first.file_name().expect("name").to_string_lossy()
+        );
+        assert!(identity.run_id.contains("login"));
+        assert!(identity.matches(&run_result("login", "default")));
     }
 
     #[test]

@@ -13,7 +13,8 @@ pub mod video;
 
 pub use collector::{
     CaptureKind, CapturedStep, EvidenceCollector, EvidenceManifest, EvidencePublisher,
-    PublishedStep, ScreenSource, EVIDENCE_MANIFEST_VERSION,
+    PublishedStep, RawOutput, ReusedFrom, RunIdentity, ScreenCapture, ScreenSource,
+    EVIDENCE_MANIFEST_VERSION,
 };
 pub use diff::apply_visual_diff;
 pub use render::{normalize_text, render_by_extension, render_png, render_svg};
