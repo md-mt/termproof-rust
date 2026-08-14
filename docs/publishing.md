@@ -132,6 +132,20 @@ overlays the not-yet-published tarballs in a temporary local registry:
 cargo publish --dry-run --workspace
 ```
 
+Rehearse that on a clean target directory. The overlay registry hands cargo a
+package identified only by name and version, and cargo treats registry sources
+as immutable — so a second rehearsal of the *same* version, after the source
+has changed, can reuse the artefact built from the first one and fail on code
+that is no longer there. The failure looks like a real defect and is not:
+
+```sh
+CARGO_TARGET_DIR=$(mktemp -d) cargo publish --dry-run --workspace
+```
+
+CI is not exposed to this — no workflow caches `~/.cargo` or `target/`, so
+every run starts empty. Keep it that way, or the release gate inherits the
+same trap.
+
 ## Tag format
 
 **`v<version>` — `v0.2.1`, not `0.2.1`.** A tag in any other form fails the
