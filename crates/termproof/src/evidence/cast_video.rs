@@ -310,6 +310,28 @@ fn attributed_screen_from_avt(vt: &Vt) -> AttributedScreen {
     }
 }
 
+/// Convert one `avt` cell, keeping `avt`'s own width.
+///
+/// # The one width table we do not control
+///
+/// Everywhere else, in-tree width decisions are pinned to the `unicode-width`
+/// major `vt100` uses, so [`crate::terminal::attributed`]'s two paths agree
+/// about which column a glyph occupies. `avt` brings its own `unicode-width`
+/// 0.1, and as of `avt` 0.18 — the latest release — there is no version built
+/// against 0.2, so this path cannot be brought onto that table.
+///
+/// We take `avt`'s width rather than recomputing it. `avt` already *placed*
+/// the glyph and its filler using its own table; substituting a width from a
+/// different table would leave the cell disagreeing with the grid it sits in,
+/// and [`crate::terminal::attributed::screen_svg`] paints the background rect
+/// from that width — a cell claiming two columns where `avt` allocated one
+/// spills over its neighbour. A self-consistent frame measured by an older
+/// table is better evidence than an incoherent one.
+///
+/// The practical effect is that a cast frame and a live `vt100` screen can
+/// place the same code point in different columns; `cast_frames_use_avts_width_table`
+/// pins a concrete case, and fails when `avt` catches up so this can be
+/// revisited rather than quietly outliving the constraint.
 fn cell_from_avt(cell: &avt::Cell) -> AttributedCell {
     let pen = cell.pen();
     let width = cell.width().min(2) as u8;
@@ -396,6 +418,37 @@ mod tests {
         // 60s of waiting must not become 60s of still frames.
         let f = frames("[0.0, \"o\", \"a\"]\n[60.0, \"o\", \"b\"]\n");
         assert_eq!(f.len(), 25);
+    }
+
+    #[test]
+    fn cast_frames_use_avts_width_table() {
+        // U+1FA89 is one column under `unicode-width` 0.1 and two under 0.2.
+        // The rest of the crate is pinned to 0.2 to match `vt100`; `avt` is
+        // built against 0.1 and cannot be moved, so a cast frame measures this
+        // code point differently from a live screen. That is a real fidelity
+        // gap, documented on `cell_from_avt` — this test is what stops it
+        // being a silent one.
+        //
+        // When this fails because `avt` has moved to 0.2, the gap is closed:
+        // delete the test and the caveat rather than adjusting the expectation.
+        // Written as a surrogate pair because a `.cast` line is JSON, which
+        // has no `\u{...}` form for an astral code point.
+        let f = frames("[0.0, \"o\", \"\\ud83e\\ude89x\"]\n");
+        let row = &f.last().unwrap().rows[0];
+        assert_eq!(
+            row[0].width, 1,
+            "avt no longer measures U+1FA89 with the unicode-width 0.1 table; \
+             re-check whether avt and vt100 can now share one table"
+        );
+        assert_eq!(row[1].text, "x", "x should sit in the adjacent column");
+
+        // The same bytes through the vt100-backed path put `x` one column
+        // further along. Asserted so the divergence is stated, not implied.
+        let mut parser = vt100::Parser::new(3, 10, 0);
+        parser.process("\u{1FA89}x".as_bytes());
+        let live = crate::terminal::attributed::from_vt100(parser.screen());
+        assert_eq!(live.rows[0][0].width, 2);
+        assert_eq!(live.rows[0][2].text, "x");
     }
 
     // -- Cases the hand-rolled grid got wrong -------------------------------

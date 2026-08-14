@@ -1650,7 +1650,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "unicode-normalization",
- "unicode-width 0.1.14",
+ "unicode-width 0.2.2",
  "vt100",
 ]
 

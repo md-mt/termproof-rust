@@ -65,7 +65,11 @@ quick-junit = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"
 unicode-normalization = "0.1"
-unicode-width = "0.1"
+# Must track the major that `vt100` depends on. Our own width decisions and
+# vt100's cell layout have to come from one Unicode table, or the same byte
+# stream lands in a different column depending on which path read it — see the
+# note on width tables in `terminal::attributed`.
+unicode-width = "0.2"
 tempfile = "3.10"
 thiserror = "2.0"
 avt = "0.16"

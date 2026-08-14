@@ -32,6 +32,22 @@
 //! SGR 1 and SGR 2 as one three-valued intensity, so bold and dim are mutually
 //! exclusive on the [`from_vt100`] path; the ANSI-text path carries them as
 //! independent flags, as `tmux` emits them.
+//!
+//! # Both paths must measure width with one table
+//!
+//! [`from_vt100`] inherits whatever column layout `vt100` chose, and the
+//! ANSI-text path re-derives it with [`cell_width`]. If those two consult
+//! different `unicode-width` majors they disagree about real code points —
+//! U+1FA89 is one column under 0.1 and two under 0.2, and 458 code points
+//! differ in total. The same byte then lands in a different column depending
+//! on which path read it, which moves glyphs in the SVG and changes
+//! [`AttributedScreen::render_fingerprint`], so evidence dedup stops
+//! recognising two identical screens as identical.
+//!
+//! The workspace therefore pins `unicode-width` to the major `vt100` depends
+//! on, and that pin carries a comment saying so. `evidence::cast_video` is the
+//! one place this cannot be enforced: it replays through `avt`, which brings
+//! its own table. See `cell_from_avt` there.
 
 use std::sync::OnceLock;
 
@@ -821,6 +837,13 @@ fn xterm_256_color(index: u16) -> String {
         .unwrap_or_else(|| "default".to_string())
 }
 
+/// Display columns for one character, from the same table `vt100` lays cells
+/// out with.
+///
+/// "Same table" is a constraint, not a coincidence: the workspace pins
+/// `unicode-width` to the major `vt100` depends on precisely so this agrees
+/// with [`from_vt100`]. See the width-table note in the module docs for what
+/// goes wrong when they drift.
 fn cell_width(ch: char) -> u8 {
     match ch.width() {
         Some(2) => 2,
@@ -1070,6 +1093,52 @@ mod tests {
         metrics.recompute();
         let out = screen_svg(&vt100_screen("\x1b[2mx"), &metrics);
         assert!(out.contains("opacity=\"0.65\""), "dim not rendered: {out}");
+    }
+
+    /// U+1FA89 is one column under `unicode-width` 0.1 and two under 0.2, so
+    /// it is a live detector for the two paths drifting onto different tables.
+    const WIDTH_SPLIT_CHAR: char = '\u{1FA89}';
+
+    #[test]
+    fn both_paths_measure_width_with_the_same_table() {
+        let text = format!("{WIDTH_SPLIT_CHAR}x");
+        let via_vt100 = vt100_screen(&text);
+        let via_ansi = screen(&text);
+
+        let widths = |s: &AttributedScreen| -> Vec<u8> {
+            s.rows[0].iter().take(3).map(|c| c.width).collect()
+        };
+        assert_eq!(
+            widths(&via_vt100),
+            widths(&via_ansi),
+            "the vt100 and ANSI-text paths disagree about column layout, which \
+             means `unicode-width` has drifted off the major vt100 uses"
+        );
+        // Not just equal — equal at the value 0.2 reports, so this fails if
+        // both paths regress onto the old table together.
+        assert_eq!(widths(&via_vt100), vec![2, 0, 1]);
+    }
+
+    #[test]
+    fn both_paths_place_the_following_glyph_in_the_same_column() {
+        // The consequence that matters: a width disagreement shifts every
+        // glyph after it, so the SVG draws `x` at a different x coordinate.
+        // Compared as a column index rather than a whole-screen fingerprint,
+        // because the vt100 grid is padded to its full size and the ANSI-text
+        // grid is not — that difference is real but is not this one.
+        let text = format!("{WIDTH_SPLIT_CHAR}x");
+        let column_of_x = |s: &AttributedScreen| {
+            s.rows[0]
+                .iter()
+                .position(|c| c.text == "x")
+                .expect("x drawn")
+        };
+        assert_eq!(
+            column_of_x(&vt100_screen(&text)),
+            column_of_x(&screen(&text)),
+            "the glyph after a wide character lands in a different column \
+             depending on which path built the screen"
+        );
     }
 
     #[test]
