@@ -23,21 +23,21 @@
 //!   its escape sequences, e.g. `tmux capture-pane -e`.
 //! - [`attributed_screen_from_text`] — plain text, rendered in default colours.
 //!
-//! # One fidelity gap, stated plainly
+//! # Two fidelity gaps, stated plainly
 //!
-//! `vt100` does not model strikethrough, so [`AttributedCell::strikethrough`]
-//! is always `false` on the [`from_vt100`] path. The ANSI-text path parses SGR
-//! 9 and does set it. The field is kept rather than removed because the SVG
-//! renderer honours it and the ANSI path produces it.
-
+//! `vt100` models neither dim nor strikethrough, so [`AttributedCell::dim`] and
+//! [`AttributedCell::strikethrough`] are always `false` on the [`from_vt100`]
+//! path. The ANSI-text path parses SGR 2 and SGR 9 and does set them. The
+//! fields are kept rather than removed because the SVG renderer honours them
+//! and the ANSI path produces them.
 
 use std::sync::OnceLock;
 
 use serde::Serialize;
 use sha2::Digest;
 use sha2::Sha256;
-use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::canonical_combining_class;
+use unicode_normalization::UnicodeNormalization;
 use unicode_width::UnicodeWidthChar;
 
 /// Default grid width, in columns.
@@ -195,14 +195,24 @@ impl AnsiAttrs {
 /// `"brightred"`, or a bare 6-digit hex string. [`cell_colors`] resolves them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttributedCell {
+    /// The glyph in this cell; a single space when the cell is blank, and
+    /// empty for the filler cell that follows a wide glyph.
     pub text: String,
+    /// Unresolved foreground colour. See the type-level docs.
     pub fg: String,
+    /// Unresolved background colour. See the type-level docs.
     pub bg: String,
+    /// SGR 1.
     pub bold: bool,
+    /// SGR 2. Always `false` on the [`from_vt100`] path; see the module docs.
     pub dim: bool,
+    /// SGR 3.
     pub italic: bool,
+    /// SGR 4.
     pub underline: bool,
+    /// SGR 9. Always `false` on the [`from_vt100`] path; see the module docs.
     pub strikethrough: bool,
+    /// SGR 7 — foreground and background swap when rendered.
     pub reverse: bool,
     /// Display columns: 2 for a wide glyph, 0 for the filler cell that follows
     /// it, 1 otherwise.
@@ -254,21 +264,33 @@ struct CellFingerprint<'a>(
 /// A rectangular terminal grid plus cursor metadata.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AttributedScreen {
+    /// Cells in row-major order. Rows are not required to be equal length;
+    /// [`column_count`](Self::column_count) reports the widest.
     pub rows: Vec<Vec<AttributedCell>>,
+    /// Zero-based cursor row.
     pub cursor_row: usize,
+    /// Zero-based cursor column.
     pub cursor_column: usize,
+    /// Whether the cursor is hidden (DECTCEM reset).
     pub cursor_hidden: bool,
 }
 
 impl AttributedScreen {
+    /// Number of rows in the grid.
     pub fn row_count(&self) -> usize {
         self.rows.len()
     }
 
+    /// Width of the widest row, in cells.
     pub fn column_count(&self) -> usize {
         self.rows.iter().map(|r| r.len()).max().unwrap_or(0)
     }
 
+    /// The grid as one string per row, dropping attributes.
+    ///
+    /// `trim_right` strips trailing whitespace from each line, which is what
+    /// you want when comparing against expected text: a terminal pads every
+    /// row out to the full width.
     pub fn text_lines(&self, trim_right: bool) -> Vec<String> {
         self.rows
             .iter()
@@ -287,6 +309,7 @@ impl AttributedScreen {
             .collect()
     }
 
+    /// [`text_lines`](Self::text_lines) joined with newlines.
     pub fn to_text(&self, trim_right: bool) -> String {
         self.text_lines(trim_right).join("\n")
     }
@@ -425,10 +448,10 @@ fn cell_from_vt100(cell: &vt100::Cell) -> AttributedCell {
         fg: vt100_color(cell.fgcolor()),
         bg: vt100_color(cell.bgcolor()),
         bold: cell.bold(),
-        dim: cell.dim(),
+        // `vt100` models neither dim nor strikethrough; see the module docs.
+        dim: false,
         italic: cell.italic(),
         underline: cell.underline(),
-        // `vt100` does not model strikethrough; see the module docs.
         strikethrough: false,
         reverse: cell.inverse(),
         width,
@@ -465,7 +488,11 @@ pub fn rgb_color(r: u8, g: u8, b: u8) -> String {
 pub fn cell_colors(cell: &AttributedCell) -> (String, String) {
     let fg = css_color(&cell.fg, DEFAULT_FG);
     let bg = css_color(&cell.bg, DEFAULT_BG);
-    if cell.reverse { (bg, fg) } else { (fg, bg) }
+    if cell.reverse {
+        (bg, fg)
+    } else {
+        (fg, bg)
+    }
 }
 
 /// Escape `&`, `<`, `>` for XML text content (mirrors `xml.sax.saxutils.escape`).
@@ -478,13 +505,26 @@ pub fn xml_escape(s: &str) -> String {
 /// Canvas geometry for [`screen_svg`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SvgMetrics {
+    /// Grid width, in cells.
     pub columns: usize,
+    /// Grid height, in cells.
     pub rows: usize,
+    /// Cell width, in SVG units.
     pub cell_w: f64,
+    /// Cell height, in SVG units.
     pub cell_h: f64,
+    /// Font size, in SVG units.
     pub font_px: u32,
+    /// Margin around the grid, in SVG units.
     pub padding: u32,
+    /// Canvas width, in SVG units.
+    ///
+    /// Cached, not computed on read: mutating `columns`, `cell_w` or `padding`
+    /// leaves this stale until [`recompute`](Self::recompute) is called. It is
+    /// a field rather than a method so a caller can override the canvas —
+    /// video encoders want a fixed frame size regardless of the grid.
     pub width: usize,
+    /// Canvas height, in SVG units. Cached; see [`width`](Self::width).
     pub height: usize,
 }
 
@@ -500,13 +540,23 @@ impl Default for SvgMetrics {
             width: 0,
             height: 0,
         };
-        metrics.width = metrics.derived_width();
-        metrics.height = metrics.derived_height();
+        metrics.recompute();
         metrics
     }
 }
 
 impl SvgMetrics {
+    /// Recompute the cached [`width`](Self::width) and [`height`](Self::height)
+    /// from the grid and cell metrics.
+    ///
+    /// Call this after changing `columns`, `rows`, `cell_w`, `cell_h` or
+    /// `padding` — including after a `..Default::default()` struct update,
+    /// which copies the *default* canvas rather than deriving a new one.
+    pub fn recompute(&mut self) {
+        self.width = self.derived_width();
+        self.height = self.derived_height();
+    }
+
     /// Canvas width implied by the grid and cell metrics.
     pub fn derived_width(&self) -> usize {
         (self.columns as f64 * self.cell_w) as usize + 2 * self.padding as usize
@@ -654,7 +704,11 @@ fn parse_sgr_params(params: &str) -> Vec<u16> {
         .filter(|p| !p.is_empty())
         .filter_map(|p| p.parse::<u16>().ok())
         .collect();
-    if parsed.is_empty() { vec![0] } else { parsed }
+    if parsed.is_empty() {
+        vec![0]
+    } else {
+        parsed
+    }
 }
 
 fn apply_sgr(params: &[u16], attrs: &mut AnsiAttrs) {
@@ -950,11 +1004,12 @@ mod tests {
     // -- SVG rendering ------------------------------------------------------
 
     fn svg(ansi: &str) -> String {
-        let metrics = SvgMetrics {
+        let mut metrics = SvgMetrics {
             columns: 10,
             rows: 3,
             ..Default::default()
         };
+        metrics.recompute();
         screen_svg(&attributed_screen_from_ansi_text(ansi, 10, 3), &metrics)
     }
 
@@ -1035,11 +1090,12 @@ mod tests {
 
     #[test]
     fn grid_is_clipped_to_the_metrics() {
-        let metrics = SvgMetrics {
+        let mut metrics = SvgMetrics {
             columns: 2,
             rows: 1,
             ..Default::default()
         };
+        metrics.recompute();
         let screen = attributed_screen_from_ansi_text("abcd\nefgh", 10, 5);
         let out = screen_svg(&screen, &metrics);
         assert_eq!(out.matches("<text").count(), 2);

@@ -13,11 +13,8 @@
 //! decide; the default is that missing media degrades the report rather than
 //! the verdict.
 
-use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
-
-use regex::Regex;
 
 use termproof_terminal::proc::combined_output;
 use termproof_terminal::proc::run_with_timeout;
@@ -37,6 +34,11 @@ pub trait ArtifactUploader {
     fn last_error(&self) -> Option<&str>;
 }
 
+/// Trim `value` and cap it at 500 characters, appending `...` if cut.
+///
+/// Tool output is arbitrary and can be megabytes; an error message that long
+/// is not an error message. Public so product-side [`ArtifactUploader`]
+/// implementations clip their failures the same way.
 pub fn clip(value: &str) -> String {
     let compact = value.trim();
     if compact.len() <= MAX_ERROR_LENGTH {
@@ -54,10 +56,11 @@ pub fn clip(value: &str) -> String {
     format!("{}...", &compact[..cut])
 }
 
-/// Run `executable`, falling back to `/usr/local/bin/<executable>` if the bare
-/// name is not on PATH, and return combined output or an error message.
-/// Run an external upload tool. Public so product-side [`ArtifactUploader`]
-/// implementations get the same timeout and error clipping.
+/// Run an external upload tool and return its combined output.
+///
+/// Falls back to `/usr/local/bin/<executable>` if the bare name is not on
+/// PATH. Public so product-side [`ArtifactUploader`] implementations get the
+/// same timeout and error clipping.
 pub fn run_tool(executable: &str, args: &[String]) -> Result<String, String> {
     let attempt = |exe: &str| -> std::io::Result<std::process::Output> {
         let mut cmd = Command::new(exe);
@@ -98,6 +101,7 @@ pub struct FallbackUploader {
 }
 
 impl FallbackUploader {
+    /// Compose `uploaders` into a chain, tried in the order given.
     pub fn new(uploaders: Vec<Box<dyn ArtifactUploader>>) -> Self {
         FallbackUploader {
             uploaders,

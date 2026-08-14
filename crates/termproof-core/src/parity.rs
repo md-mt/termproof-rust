@@ -453,7 +453,11 @@ fn backticked(names: &[String]) -> String {
 }
 
 fn verdict(passed: bool) -> &'static str {
-    if passed { "PASS" } else { "FAIL" }
+    if passed {
+        "PASS"
+    } else {
+        "FAIL"
+    }
 }
 
 #[cfg(test)]
@@ -549,7 +553,10 @@ mod tests {
             "login",
             true,
             1.0,
-            vec![assertion("shared", false, ""), assertion("only_r", true, "")],
+            vec![
+                assertion("shared", false, ""),
+                assertion("only_r", true, ""),
+            ],
         )]);
         let d = compare(&l, &r, "a", "b").unwrap();
         let found = d
@@ -617,7 +624,10 @@ mod tests {
 
     #[test]
     fn a_recipe_only_one_side_ran_is_reported() {
-        let l = summarize(&[run("login", true, 1.0, vec![]), run("logout", true, 1.0, vec![])]);
+        let l = summarize(&[
+            run("login", true, 1.0, vec![]),
+            run("logout", true, 1.0, vec![]),
+        ]);
         let r = summarize(&[run("login", true, 1.0, vec![])]);
         assert_eq!(
             compare(&l, &r, "a", "b").unwrap(),
@@ -705,7 +715,13 @@ mod tests {
             },
         ];
         let out = render(&all, "left", "right");
-        for expected in ["ran only in", "verdict differs", "score", "disagree", "wording"] {
+        for expected in [
+            "ran only in",
+            "verdict differs",
+            "score",
+            "disagree",
+            "wording",
+        ] {
             assert!(out.contains(expected), "{expected} missing from:\n{out}");
         }
         assert!(out.contains("**5 divergence(s)**"), "{out}");

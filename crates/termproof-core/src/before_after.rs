@@ -38,7 +38,11 @@ use crate::result::RunResult;
 
 /// Outcome label for a run that happened.
 fn outcome(result: &RunResult) -> &'static str {
-    if result.passed { PASS } else { FAIL }
+    if result.passed {
+        PASS
+    } else {
+        FAIL
+    }
 }
 
 /// The run passed.
@@ -226,7 +230,11 @@ mod tests {
         // diff.
         let deltas = compute_deltas(
             &[run("a", "d", true), run("b", "d", true)],
-            &[run("b", "d", false), run("a", "d", false), run("c", "d", true)],
+            &[
+                run("b", "d", false),
+                run("a", "d", false),
+                run("c", "d", true),
+            ],
         );
         let names: Vec<&str> = deltas.iter().map(|d| d.recipe.as_str()).collect();
         assert_eq!(names, ["a", "b", "c"]);

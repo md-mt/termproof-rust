@@ -478,9 +478,12 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("B".to_string(), "two words".to_string());
         env.insert("A".to_string(), "one".to_string());
-        let path =
-            write_launch_script(dir.path(), &env, &["/bin/app".to_string(), "--x".to_string()])
-                .expect("script written");
+        let path = write_launch_script(
+            dir.path(),
+            &env,
+            &["/bin/app".to_string(), "--x".to_string()],
+        )
+        .expect("script written");
         let body = fs::read_to_string(&path).expect("readable");
 
         assert!(body.starts_with("#!/bin/sh\n"), "{body}");
@@ -505,16 +508,17 @@ mod tests {
     #[test]
     fn an_empty_argv_is_refused() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let err = TmuxBackend
-            .create_session(
-                vec![],
-                dir.path().join("s.cast"),
-                None,
-                HashMap::new(),
-                80,
-                24,
-            )
-            .expect_err("empty argv should be refused");
+        // `expect_err` would need `Box<dyn Session>: Debug`, which it is not.
+        let Err(err) = TmuxBackend.create_session(
+            vec![],
+            dir.path().join("s.cast"),
+            None,
+            HashMap::new(),
+            80,
+            24,
+        ) else {
+            panic!("empty argv should be refused");
+        };
         assert!(matches!(err, SessionError::Config(_)), "{err:?}");
     }
 

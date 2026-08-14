@@ -18,7 +18,6 @@ termproof-terminal.workspace = true
 avt.workspace = true
 vt100.workspace = true
 serde.workspace = true
-regex.workspace = true
 serde_json.workspace = true
 quick-junit.workspace = true
 image.workspace = true

@@ -31,20 +31,20 @@ use std::time::Duration;
 
 use avt::Vt;
 
-use termproof_terminal::proc::combined_output;
-use termproof_terminal::proc::run_with_timeout;
-use termproof_terminal::attributed::AttributedCell;
-use termproof_terminal::attributed::AttributedScreen;
 use termproof_terminal::attributed::palette_color;
 use termproof_terminal::attributed::rgb_color;
+use termproof_terminal::attributed::screen_svg;
+use termproof_terminal::attributed::AttributedCell;
+use termproof_terminal::attributed::AttributedScreen;
+use termproof_terminal::attributed::SvgMetrics;
 use termproof_terminal::attributed::DEFAULT_CELL_H;
 use termproof_terminal::attributed::DEFAULT_CELL_W;
 use termproof_terminal::attributed::DEFAULT_COLUMNS;
 use termproof_terminal::attributed::DEFAULT_FONT_PX;
 use termproof_terminal::attributed::DEFAULT_PADDING;
 use termproof_terminal::attributed::DEFAULT_ROWS;
-use termproof_terminal::attributed::SvgMetrics;
-use termproof_terminal::attributed::screen_svg;
+use termproof_terminal::proc::combined_output;
+use termproof_terminal::proc::run_with_timeout;
 
 const RSVG_CONVERT: &str = "/usr/bin/rsvg-convert";
 const FFMPEG: &str = "/usr/local/bin/ffmpeg";
@@ -77,15 +77,26 @@ pub struct CastVideoConverter {
     /// 2 fps sampled a 30s session 59 times and missed every transient state;
     /// the reference recording that reads well is 24.
     pub fps: u32,
+    /// Longest gap, in seconds, that a pause in the cast is played back at
+    /// before it is truncated. Keeps a session that sat idle for a minute from
+    /// producing a minute of unchanging video.
     pub idle_time_limit: f64,
+    /// Grid width, in cells.
     pub columns: usize,
+    /// Grid height, in cells.
     pub rows: usize,
+    /// Cell width, in SVG units.
     pub cell_w: f64,
+    /// Cell height, in SVG units.
     pub cell_h: f64,
+    /// Font size, in SVG units.
     pub font_px: u32,
+    /// Margin around the grid, in SVG units.
     pub padding: u32,
     /// Frame size; derived from the grid when `None`.
     pub width: Option<usize>,
+    /// Frame height; derived from the grid when `None`. See
+    /// [`width`](Self::width).
     pub height: Option<usize>,
     runner: ToolRunner,
 }
@@ -109,10 +120,13 @@ impl Default for CastVideoConverter {
 }
 
 impl CastVideoConverter {
+    /// A converter with the default frame rate, grid and encoding tool.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// A default converter that shells out through `runner` instead of the
+    /// real encoder. This is the seam the tests use.
     pub fn with_runner(runner: ToolRunner) -> Self {
         CastVideoConverter {
             runner,
@@ -120,6 +134,8 @@ impl CastVideoConverter {
         }
     }
 
+    /// Canvas geometry for each frame, honouring [`width`](Self::width) and
+    /// [`height`](Self::height) if they are set.
     pub fn metrics(&self) -> SvgMetrics {
         let mut metrics = SvgMetrics {
             columns: self.columns,
@@ -136,14 +152,18 @@ impl CastVideoConverter {
         metrics
     }
 
+    /// Frame width, in pixels.
     pub fn frame_width(&self) -> usize {
         self.metrics().width
     }
 
+    /// Frame height, in pixels.
     pub fn frame_height(&self) -> usize {
         self.metrics().height
     }
 
+    /// The default output path for `cast_path`: the same path with an `.mp4`
+    /// extension.
     pub fn output_path_for(&self, cast_path: &str) -> String {
         let p = Path::new(cast_path);
         p.with_extension("mp4").to_string_lossy().to_string()
@@ -269,6 +289,57 @@ impl CastVideoConverter {
             frames.push(final_snapshot);
         }
         Ok(frames)
+    }
+}
+
+/// Build an attributed screen from an `avt` grid.
+///
+/// Lives here rather than in `termproof-terminal` so that crate stays
+/// `vt100`-only: cast playback is the one place `avt` earns its keep, and a
+/// second emulator in the terminal crate would be a cost every consumer pays.
+fn attributed_screen_from_avt(vt: &Vt) -> AttributedScreen {
+    let rows = vt
+        .view()
+        .iter()
+        .map(|line| line.cells().iter().map(cell_from_avt).collect())
+        .collect();
+    let cursor = vt.cursor();
+    AttributedScreen {
+        rows,
+        cursor_row: cursor.row,
+        cursor_column: cursor.col,
+        cursor_hidden: !cursor.visible,
+    }
+}
+
+fn cell_from_avt(cell: &avt::Cell) -> AttributedCell {
+    let pen = cell.pen();
+    let width = cell.width().min(2) as u8;
+    AttributedCell {
+        // A width-0 cell is the filler behind a wide glyph; it carries no text
+        // of its own, matching what the SGR parser produces.
+        text: if width == 0 {
+            String::new()
+        } else {
+            cell.char().to_string()
+        },
+        fg: avt_color(pen.foreground()),
+        bg: avt_color(pen.background()),
+        bold: pen.is_bold(),
+        dim: pen.is_faint(),
+        italic: pen.is_italic(),
+        underline: pen.is_underline(),
+        strikethrough: pen.is_strikethrough(),
+        reverse: pen.is_inverse(),
+        width,
+    }
+}
+
+fn avt_color(color: Option<avt::Color>) -> String {
+    match color {
+        None => "default".to_string(),
+        Some(avt::Color::Indexed(index)) => palette_color(index as u16),
+        Some(avt::Color::RGB(rgb)) => rgb_color(rgb.r, rgb.g, rgb.b),
     }
 }
 
@@ -410,11 +481,9 @@ mod tests {
         assert!(ffmpeg_args.contains(&"stillimage".to_string()));
         assert!(ffmpeg_args.contains(&"24".to_string()));
         // Every earlier call rasterizes one frame.
-        assert!(
-            calls[..calls.len() - 1]
-                .iter()
-                .all(|(e, _)| e == RSVG_CONVERT)
-        );
+        assert!(calls[..calls.len() - 1]
+            .iter()
+            .all(|(e, _)| e == RSVG_CONVERT));
     }
 
     #[test]
@@ -429,56 +498,5 @@ mod tests {
         };
         assert_eq!(conv.frame_width(), 640);
         assert_eq!(conv.frame_height(), 480);
-    }
-}
-
-/// Build an attributed screen from an `avt` grid.
-///
-/// Lives here rather than in `termproof-terminal` so that crate stays
-/// `vt100`-only: cast playback is the one place `avt` earns its keep, and a
-/// second emulator in the terminal crate would be a cost every consumer pays.
-fn attributed_screen_from_avt(vt: &Vt) -> AttributedScreen {
-    let rows = vt
-        .view()
-        .iter()
-        .map(|line| line.cells().iter().map(cell_from_avt).collect())
-        .collect();
-    let cursor = vt.cursor();
-    AttributedScreen {
-        rows,
-        cursor_row: cursor.row,
-        cursor_column: cursor.col,
-        cursor_hidden: !cursor.visible,
-    }
-}
-
-fn cell_from_avt(cell: &avt::Cell) -> AttributedCell {
-    let pen = cell.pen();
-    let width = cell.width().min(2) as u8;
-    AttributedCell {
-        // A width-0 cell is the filler behind a wide glyph; it carries no text
-        // of its own, matching what the SGR parser produces.
-        text: if width == 0 {
-            String::new()
-        } else {
-            cell.char().to_string()
-        },
-        fg: avt_color(pen.foreground()),
-        bg: avt_color(pen.background()),
-        bold: pen.is_bold(),
-        dim: pen.is_faint(),
-        italic: pen.is_italic(),
-        underline: pen.is_underline(),
-        strikethrough: pen.is_strikethrough(),
-        reverse: pen.is_inverse(),
-        width,
-    }
-}
-
-fn avt_color(color: Option<avt::Color>) -> String {
-    match color {
-        None => "default".to_string(),
-        Some(avt::Color::Indexed(index)) => palette_color(index as u16),
-        Some(avt::Color::RGB(rgb)) => rgb_color(rgb.r, rgb.g, rgb.b),
     }
 }

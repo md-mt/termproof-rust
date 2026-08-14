@@ -384,11 +384,9 @@ mod tests {
 
         // And through the detector, which shares the contract.
         const M: [&str; 1] = ["No Results Found"];
-        assert!(
-            FailureDetector::markers_only()
-                .anywhere(&M)
-                .detects("search: no results found")
-        );
+        assert!(FailureDetector::markers_only()
+            .anywhere(&M)
+            .detects("search: no results found"));
     }
 
     #[test]

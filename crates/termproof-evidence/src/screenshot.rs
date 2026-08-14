@@ -27,18 +27,18 @@ use std::io::Write;
 use std::process::Command;
 use std::time::Duration;
 
-use termproof_terminal::proc::combined_output;
-use termproof_terminal::proc::run_with_timeout;
+use termproof_terminal::attributed::attributed_screen_from_text;
+use termproof_terminal::attributed::screen_svg;
 use termproof_terminal::attributed::AttributedScreen;
+use termproof_terminal::attributed::SvgMetrics;
 use termproof_terminal::attributed::DEFAULT_CELL_H;
 use termproof_terminal::attributed::DEFAULT_CELL_W;
 use termproof_terminal::attributed::DEFAULT_COLUMNS;
 use termproof_terminal::attributed::DEFAULT_FONT_PX;
 use termproof_terminal::attributed::DEFAULT_PADDING;
 use termproof_terminal::attributed::DEFAULT_ROWS;
-use termproof_terminal::attributed::SvgMetrics;
-use termproof_terminal::attributed::attributed_screen_from_text;
-use termproof_terminal::attributed::screen_svg;
+use termproof_terminal::proc::combined_output;
+use termproof_terminal::proc::run_with_timeout;
 
 const RSVG_CONVERT: &str = "/usr/bin/rsvg-convert";
 const TOOL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -67,11 +67,17 @@ pub fn default_runner() -> ToolRunner {
 
 /// Renders a captured screen into a PNG image.
 pub struct ScreenshotRenderer {
+    /// Grid width, in cells.
     pub columns: usize,
+    /// Grid height, in cells.
     pub rows: usize,
+    /// Cell width, in SVG units.
     pub cell_w: f64,
+    /// Cell height, in SVG units.
     pub cell_h: f64,
+    /// Font size, in SVG units.
     pub font_px: u32,
+    /// Margin around the grid, in SVG units.
     pub padding: u32,
     runner: ToolRunner,
 }
@@ -91,10 +97,13 @@ impl Default for ScreenshotRenderer {
 }
 
 impl ScreenshotRenderer {
+    /// A renderer with the default grid, metrics and rasterisation tool.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// A default renderer that shells out through `runner` instead of the
+    /// real rasteriser. This is the seam the tests use.
     pub fn with_runner(runner: ToolRunner) -> Self {
         ScreenshotRenderer {
             runner,
@@ -115,15 +124,16 @@ impl ScreenshotRenderer {
             width: 0,
             height: 0,
         };
-        metrics.width = metrics.derived_width();
-        metrics.height = metrics.derived_height();
+        metrics.recompute();
         metrics
     }
 
+    /// Canvas width, in pixels.
     pub fn width(&self) -> usize {
         self.metrics().width
     }
 
+    /// Canvas height, in pixels.
     pub fn height(&self) -> usize {
         self.metrics().height
     }
@@ -174,15 +184,15 @@ impl ScreenshotRenderer {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::Mutex;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::sync::Mutex;
 
     use super::*;
+    use termproof_terminal::attributed::attributed_screen_from_ansi_text;
     use termproof_terminal::attributed::DEFAULT_BG;
     use termproof_terminal::attributed::DEFAULT_FG;
-    use termproof_terminal::attributed::attributed_screen_from_ansi_text;
 
     /// A renderer whose runner records the SVG handed to `rsvg-convert`.
     fn capturing_renderer() -> (ScreenshotRenderer, Arc<Mutex<String>>) {

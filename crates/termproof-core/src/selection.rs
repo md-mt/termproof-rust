@@ -22,7 +22,8 @@
 //! # use termproof_core::recipe::Recipe;
 //! # fn recipe(name: &str, paths: &[&str]) -> Recipe {
 //! #     serde_json::from_value(serde_json::json!({
-//! #         "name": name, "ci_paths": paths, "steps": []
+//! #         "name": name, "ci_paths": paths, "steps": [],
+//! #         "command": {"argv": ["true"]}
 //! #     })).expect("valid recipe")
 //! # }
 //! let recipes = vec![
@@ -131,9 +132,11 @@ fn normalize_path(path: &str, repo_marker: &str) -> String {
     while let Some(rest) = normalized.strip_prefix("./") {
         normalized = rest.to_string();
     }
+    // Everything up to *and including* the marker goes: the marker names the
+    // checkout directory, which is not part of a repo-relative path. Keeping
+    // it would leave `repo/src/foo.rs`, which no `ci_paths` pattern matches.
     if let Some(idx) = normalized.find(repo_marker) {
-        let tail = &normalized[idx + repo_marker.len()..];
-        normalized = format!("{}{}", repo_marker.trim_start_matches('/'), tail);
+        normalized = normalized[idx + repo_marker.len()..].to_string();
     }
     normalized.trim_end_matches('/').to_string()
 }
@@ -177,7 +180,12 @@ mod tests {
     /// guesses at their values instead of using theirs.
     fn recipe(name: &str, paths: &[&str]) -> Recipe {
         serde_json::from_value(serde_json::json!({
-            "name": name, "ci_paths": paths, "steps": []
+            "name": name,
+            "ci_paths": paths,
+            "steps": [],
+            // `command` is the one required field with no serde default.
+            // Selection never reads it, but a `Recipe` cannot exist without one.
+            "command": {"argv": ["true"]},
         }))
         .expect("valid recipe")
     }

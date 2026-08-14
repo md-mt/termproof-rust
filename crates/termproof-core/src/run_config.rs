@@ -52,8 +52,11 @@ pub fn pick<T>(flag: Option<T>, configured: Option<T>, builtin: T) -> T {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RunConfig {
+    /// Which recipes to run, and where they are found.
     pub discovery: Discovery,
+    /// How the product under test is launched and driven.
     pub execution: Execution,
+    /// Where results go, and what must have happened to call the run a pass.
     pub output: Output,
 }
 
@@ -102,9 +105,14 @@ pub struct Discovery {
     deny_unknown_fields
 )]
 pub enum Selection {
+    /// Every discovered recipe.
     All,
+    /// Every recipe at this priority, e.g. `P0`.
     Priority(String),
+    /// Exactly these recipes, by name.
     Names(Vec<String>),
+    /// Recipes whose `ci_paths` match the changed files listed in this file,
+    /// one path per line. See [`crate::selection`].
     ChangedFiles(String),
 }
 
@@ -118,7 +126,12 @@ pub struct Execution {
     /// Renderer or renderer set to validate.
     pub renderer: Option<String>,
 
+    /// Model identifier to run the product under test with, when it takes one.
+    /// Uninterpreted here — passed through for the runner to resolve.
     pub model: Option<String>,
+
+    /// Reasoning-effort setting to pair with [`model`](Self::model), for
+    /// products that expose one. Also uninterpreted.
     pub effort: Option<String>,
 
     /// Where the binary under test comes from.
@@ -161,8 +174,13 @@ pub enum BinarySource {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Output {
+    /// Directory for screenshots, casts and videos.
     pub artifact_dir: Option<String>,
+
+    /// Where the human-readable report is written.
     pub report_path: Option<String>,
+
+    /// Where the machine-readable result JSON is written.
     pub result_json_path: Option<String>,
 
     /// Publishers to run, in order, each named for the consumer to resolve.
@@ -172,6 +190,7 @@ pub struct Output {
     /// deployment's storage systems into a layer that must not know about any.
     pub publishers: Vec<Publisher>,
 
+    /// What has to have happened for the run to count as passing.
     pub require: Requirements,
 }
 
@@ -179,7 +198,9 @@ pub struct Output {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Publisher {
+    /// The publisher's name, for the consumer to resolve to an implementation.
     pub name: String,
+    /// Opaque settings, passed to that implementation verbatim.
     pub settings: BTreeMap<String, String>,
 }
 
