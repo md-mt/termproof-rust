@@ -2,6 +2,7 @@
 //! and cache.
 
 pub mod cast_video;
+pub mod dedup;
 pub mod diff;
 pub mod render;
 pub mod report;
