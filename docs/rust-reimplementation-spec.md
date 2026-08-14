@@ -217,8 +217,12 @@ because the entry points genuinely differ:
 | `render_png` | shares canvas, grid and palette with `render_svg` and nothing else; a block per occupied cell, because it bundles no font |
 | `AggFfmpegBackend` | outside the target entirely; `agg` brings its own fonts and palette |
 
-Each row is asserted in unit tests, including the negative one: what
-`render_png` is checked to share is exactly canvas, grid and palette.
+The first three rows are asserted in unit tests, including the negative part of
+the third: what `render_png` is checked to share is exactly canvas, grid and
+palette. The fourth is not asserted, and cannot be by the same means — it is an
+exclusion, not a property. `evidence::video` has no unit tests at all, which is
+a real gap and RUST-012's to close; until it does, that row is a statement
+about what the code does, held up by reading it rather than by running it.
 
 Two of those rows are the ones to remember. `render_png` is a block renderer,
 not a glyph renderer; it earns its place by needing no external binary, where a

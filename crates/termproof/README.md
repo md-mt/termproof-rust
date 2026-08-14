@@ -85,8 +85,9 @@ the library; not evidence that a `termproof run` does any of it.
   traced back to an exact artifact.
 - `terminal::attributed` — a per-cell screen carrying foreground, background,
   bold, dim, italic, underline, strikethrough, reverse and display width, with
-  an SVG renderer. The screenshots a run writes today still come from the
-  single-colour text path.
+  an SVG renderer. A run writes no image at all today — `raw_output.txt`,
+  `screen.txt` and a cast if one was recorded — so nothing in the CLI reaches
+  this or the text path.
 - `terminal::tmux` — a `Session` that runs the program in a tmux pane and reads
   the grid back with `capture-pane`. A disagreement between it and the `vt100`
   path is an emulation gap made visible.

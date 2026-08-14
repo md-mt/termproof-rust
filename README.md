@@ -96,9 +96,10 @@ nothing here should be read as a claim that it behaves the same way.
     `run_config`, a whole run described by one file; and `vocabulary`, a
     configurable failure detector.
 
-  **None of this is wired into `termproof run`.** The screenshots a run writes
-  today are still the single-colour text path, no run uses the tmux backend or
-  the deduper, and nothing calls the uploader. Treat these as a library a
+  **None of this is wired into `termproof run`.** A run writes
+  `raw_output.txt`, `screen.txt` and a cast if one was recorded — no image at
+  all, so no command reaches either renderer yet. No run uses the tmux backend
+  or the deduper, and nothing calls the uploader. Treat these as a library a
   caller could build on, not as behaviour the CLI has.
 - **What a run still cannot do**, so that a green exit is not read as more than
   it is:
