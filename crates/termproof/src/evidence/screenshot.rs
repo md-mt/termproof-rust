@@ -3,9 +3,13 @@
 //! This takes an [`AttributedScreen`] and emits what the terminal actually
 //! showed: per-cell foreground, background, bold, italic, underline, reverse.
 //! Reach for it whenever the transport can supply a grid.
-//! [`evidence::render`](crate::evidence::render) is the text-only entry point,
-//! for when it cannot — same renderer underneath, but plain text carries no
-//! colour to draw. Its module docs have the full table.
+//! [`render_svg`](crate::evidence::render::render_svg) is the text-only entry
+//! point, for when it cannot — same renderer underneath, but plain text
+//! carries no colour to draw. Its sibling
+//! [`render_png`](crate::evidence::render::render_png) is *not* the same
+//! renderer: it paints blocks, not glyphs, and exists to reach a PNG without
+//! `rsvg-convert`. [`evidence::render`](crate::evidence::render)'s module docs
+//! have the full table.
 //!
 //! SVG first, then `rsvg-convert` for the PNG. Going through SVG rather than
 //! drawing pixels keeps the output resolution-independent and the intermediate

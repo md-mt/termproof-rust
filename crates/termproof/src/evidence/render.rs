@@ -2,20 +2,37 @@
 //!
 //! # Which renderer do I want?
 //!
-//! Several entry points turn a screen into a picture, and they differ in what
-//! they take, not in how they look — every one of them draws through
-//! [`screen_svg`], so a still from any of them is the same visual language.
+//! | I have | I want | Use | Draws through [`screen_svg`] |
+//! | --- | --- | --- | --- |
+//! | plain text | an SVG file | [`render_svg`] | yes |
+//! | an [`AttributedScreen`] | a PNG file | [`ScreenshotRenderer`](crate::evidence::screenshot::ScreenshotRenderer) | yes |
+//! | an [`AttributedScreen`] | an SVG document, in memory | [`screen_svg`] | — |
+//! | a cast | an MP4 | [`CastVideoConverter`](crate::evidence::cast_video::CastVideoConverter) | yes |
+//! | plain text | a PNG file, with no external tool | [`render_png`] | **no** |
+//! | plain text | either, chosen by file suffix | [`render_by_extension`] | for `.svg` |
 //!
-//! | I have | I want | Use |
-//! | --- | --- | --- |
-//! | plain text | an SVG or PNG file | [`render_by_extension`], or [`render_svg`] / [`render_png`] directly |
-//! | an [`AttributedScreen`] | a PNG file | [`ScreenshotRenderer`](crate::evidence::screenshot::ScreenshotRenderer) |
-//! | an [`AttributedScreen`] | an SVG document, in memory | [`screen_svg`] |
-//! | a cast | an MP4 | [`CastVideoConverter`](crate::evidence::cast_video::CastVideoConverter) |
+//! Everything in the `yes` rows is the same visual language — same fonts,
+//! palette, cell metrics and document structure — so those entry points differ
+//! in what they take, not in how they look. Three caveats.
 //!
-//! The MP4 row is the one to read twice: it holds for `CastVideoConverter`,
-//! not for the default video backend, which is still `agg_ffmpeg` and draws
-//! with its own fonts and palette. See [`evidence`](crate::evidence).
+//! [`render_png`] is a block renderer, not a glyph renderer — it bundles no
+//! font, so it paints a rectangle per occupied cell. It agrees with
+//! [`render_svg`] on canvas size, grid and palette, and that is all it agrees
+//! on; the shapes are not letters. It exists because it needs no external
+//! binary, where a real PNG has to go out to `rsvg-convert`. If you want a PNG
+//! that looks like the SVG, rasterise one — that is
+//! [`ScreenshotRenderer`](crate::evidence::screenshot::ScreenshotRenderer).
+//!
+//! The MP4 row holds for `CastVideoConverter` and not for the default video
+//! backend, which is still `agg_ffmpeg` and brings its own fonts and palette.
+//! See [`evidence`](crate::evidence).
+//!
+//! Even `CastVideoConverter` matches a still in appearance rather than in
+//! column layout: cast playback goes through `avt`, which measures widths with
+//! `unicode-width` 0.1 where the rest of the crate uses 0.2, so a character the
+//! two tables classify differently sits in a different column in a frame than
+//! in a still. [`cast_video`](crate::evidence::cast_video) explains why that
+//! trade is the right one.
 //!
 //! Reach for this module only when all you have is text. It renders in the
 //! default foreground on the default background, because plain text carries no
@@ -51,10 +68,11 @@ pub fn normalize_text(text: &str) -> String {
 /// Render `text` to SVG at `output_path` on a `cols`×`rows` grid.
 ///
 /// The text becomes a default-coloured [`AttributedScreen`] and is drawn by
-/// [`screen_svg`], so the document is identical to what
+/// [`screen_svg`], so on the same grid the document is what
 /// [`ScreenshotRenderer`](crate::evidence::screenshot::ScreenshotRenderer)
-/// produces for the same text. See the module docs for which renderer to reach
-/// for.
+/// hands `rsvg-convert`, byte for byte but for the trailing newline this adds.
+/// `svg_is_what_the_screenshot_renderer_rasterises` pins that. See the module
+/// docs for which renderer to reach for.
 pub fn render_svg(text: &str, output_path: &Path, cols: u16, rows: u16) -> std::io::Result<()> {
     let screen = screen_from_text(text, cols, rows);
     let content = screen_svg(&screen, &metrics(cols, rows)) + "\n";
@@ -89,9 +107,11 @@ fn screen_from_text(text: &str, cols: u16, rows: u16) -> AttributedScreen {
 
 /// Render `text` to PNG at `output_path` on a `cols`×`rows` grid.
 ///
-/// A block per occupied cell rather than glyphs, on the same canvas and
-/// palette [`render_svg`] uses. See the module docs for which renderer to
-/// reach for.
+/// A block per occupied cell rather than glyphs, on the canvas, grid and
+/// palette [`render_svg`] uses — and nothing beyond those three, which is what
+/// `png_shares_the_svg_canvas_grid_and_palette_and_nothing_else` pins. This
+/// does not draw through [`screen_svg`]; it is the PNG you can have without
+/// `rsvg-convert`. See the module docs for which renderer to reach for.
 pub fn render_png(text: &str, output_path: &Path, cols: u16, rows: u16) -> std::io::Result<()> {
     let metrics = metrics(cols, rows);
     let width = metrics.width as u32;
@@ -182,7 +202,12 @@ fn atomic_write(dest: &Path, content: &[u8]) -> std::io::Result<()> {
     }
 }
 
-/// Unified entry point: render `text` to `path` using extension to select renderer.
+/// Unified entry point: render `text` to `path` using extension to select
+/// renderer.
+///
+/// A `.png` suffix picks [`render_png`], which is a different renderer rather
+/// than the same picture in another container — see the module docs. Anything
+/// else picks [`render_svg`].
 pub fn render_by_extension(text: &str, path: &Path, cols: u16, rows: u16) -> std::io::Result<()> {
     match path
         .extension()
@@ -198,9 +223,14 @@ pub fn render_by_extension(text: &str, path: &Path, cols: u16, rows: u16) -> std
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
     use super::*;
     use crate::terminal::attributed::attributed_screen_from_ansi_text;
+    use crate::terminal::attributed::DEFAULT_COLUMNS;
     use crate::terminal::attributed::DEFAULT_FG;
+    use crate::terminal::attributed::DEFAULT_ROWS;
 
     fn rendered(text: &str, cols: u16, rows: u16) -> String {
         let dir = tempfile::tempdir().unwrap();
@@ -216,10 +246,36 @@ mod tests {
 
     #[test]
     fn svg_is_the_document_the_attributed_renderer_would_have_produced() {
-        // The whole point of #19: one renderer behind both entry points.
+        // The whole point of #19: one renderer behind both SVG entry points.
         let text = "$ ls\nREADME.md";
         let expected = screen_svg(&attributed_screen_from_text(text, 80, 24), &metrics(80, 24));
         assert_eq!(rendered(text, 80, 24), expected + "\n");
+    }
+
+    #[test]
+    fn svg_is_what_the_screenshot_renderer_rasterises() {
+        // The claim on `render_svg` is about `ScreenshotRenderer`, so compare
+        // against what that actually hands the rasteriser rather than against
+        // `screen_svg` directly — otherwise the doc outruns the test.
+        let text = "$ ls\nREADME.md 你x";
+        let captured = Arc::new(Mutex::new(String::new()));
+        let sink = captured.clone();
+        let shot = crate::evidence::screenshot::ScreenshotRenderer::with_runner(Box::new(
+            move |_, args: &[String], _| {
+                *sink.lock().expect("poisoned") =
+                    std::fs::read_to_string(&args[2]).expect("svg written");
+                Ok(())
+            },
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        let png = dir.path().join("a.png").to_string_lossy().to_string();
+        shot.render(text, &png, None).unwrap();
+
+        // `ScreenshotRenderer`'s default grid, so the two are comparable.
+        let ours = rendered(text, DEFAULT_COLUMNS as u16, DEFAULT_ROWS as u16);
+        let theirs = captured.lock().expect("poisoned").clone();
+        assert_eq!(ours, theirs.clone() + "\n");
+        assert_ne!(theirs, "", "the runner never saw an SVG");
     }
 
     #[test]
@@ -287,22 +343,41 @@ mod tests {
     }
 
     #[test]
-    fn png_shares_the_svg_canvas_and_palette() {
+    fn png_shares_the_svg_canvas_grid_and_palette_and_nothing_else() {
+        // This is the whole contract, so it is worth stating in full: what the
+        // PNG shares is the canvas, the cell grid and the palette. It is a
+        // block renderer — the shapes are not letters — and a caller who needs
+        // the glyphs wants `ScreenshotRenderer`, not this.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("out.png");
-        render_png("hi", &path, 80, 24).unwrap();
+        render_png("hi 你", &path, 80, 24).unwrap();
         let img = image::open(&path).unwrap().to_rgb8();
         let m = metrics(80, 24);
+        let at = |col: usize, row: usize| {
+            let x = m.padding + (col as f64 * m.cell_w) as u32 + 1;
+            let y = m.padding + (row as f64 * m.cell_h) as u32 + 1;
+            img.get_pixel(x, y).0
+        };
+
+        // Canvas: the same one `render_svg` declares.
         assert_eq!(
             (img.width(), img.height()),
             (m.width as u32, m.height as u32)
         );
+        assert!(rendered("hi 你", 80, 24)
+            .contains(&format!("width=\"{}\" height=\"{}\"", m.width, m.height)));
+        // Palette: default background outside the grid, default foreground on
+        // an occupied cell.
         assert_eq!(img.get_pixel(0, 0).0, rgb(DEFAULT_BG));
-        // First cell of the first row is occupied, so its block is painted.
-        assert_eq!(
-            img.get_pixel(m.padding + 1, m.padding + 1).0,
-            rgb(DEFAULT_FG)
-        );
+        assert_eq!(at(0, 0), rgb(DEFAULT_FG));
+        // Grid: cells are placed at `cell_w` intervals, a blank cell stays
+        // background, and a wide glyph covers both of its columns.
+        assert_eq!(at(1, 0), rgb(DEFAULT_FG));
+        assert_eq!(at(2, 0), rgb(DEFAULT_BG), "the space should be blank");
+        assert_eq!(at(3, 0), rgb(DEFAULT_FG));
+        assert_eq!(at(4, 0), rgb(DEFAULT_FG), "wide glyph lost its second cell");
+        assert_eq!(at(5, 0), rgb(DEFAULT_BG));
+        assert_eq!(at(0, 1), rgb(DEFAULT_BG), "row 1 is empty");
     }
 
     #[test]

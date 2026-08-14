@@ -9,8 +9,9 @@
 //! grid at a fixed frame rate, and renders each frame with
 //! [`screen_svg`](crate::terminal::attributed::screen_svg) — the same
 //! function behind [`crate::evidence::screenshot`]. The video is literally the
-//! screenshots in sequence, and there is one visual language across all
-//! evidence.
+//! screenshots in sequence. That holds for this backend only: `agg_ffmpeg` is
+//! still the configured default, so choosing it is what buys the shared visual
+//! language.
 //!
 //! It also drops a binary dependency: `rsvg-convert` and `ffmpeg`, no `agg`.
 //!
@@ -535,6 +536,30 @@ mod tests {
         assert!(calls[..calls.len() - 1]
             .iter()
             .all(|(e, _)| e == RSVG_CONVERT));
+    }
+
+    #[test]
+    fn a_frame_is_the_still_the_screenshot_renderer_would_draw() {
+        // The module claims the video is the screenshots in sequence. Asserting
+        // only that each frame goes to `rsvg-convert` would leave that claim
+        // resting on the SVG being the right one, which nothing checked.
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let conv = CastVideoConverter::with_runner(Box::new(move |exe, args, _| {
+            if exe == RSVG_CONVERT {
+                sink.lock()
+                    .expect("poisoned")
+                    .push(fs::read_to_string(&args[2]).expect("frame written"));
+            }
+            Ok(())
+        }));
+        let (dir, path) = cast_with("[0.0, \"o\", \"hi\"]\n");
+        let out = dir.path().join("out.mp4").to_string_lossy().to_string();
+        conv.convert(&path, Some(&out)).unwrap();
+
+        let expected = screen_svg(&frames("[0.0, \"o\", \"hi\"]\n")[0], &conv.metrics());
+        let seen = seen.lock().expect("poisoned");
+        assert_eq!(seen.first().map(String::as_str), Some(expected.as_str()));
     }
 
     #[test]

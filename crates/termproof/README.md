@@ -54,13 +54,17 @@ the only one that has ever existed on crates.io.
 
 ### `evidence` — screenshots, video, reports
 
-- `render_png` / `render_svg` / `render_by_extension` — plain screen text to an
-  image, in default colours.
+- `render_svg` / `render_by_extension` — plain screen text to an SVG, in
+  default colours.
 - `ScreenshotRenderer` — an attributed grid to a PNG, with the colours the
-  terminal actually showed. Both of these draw through the same `screen_svg`,
-  so a still looks the same whichever entry point produced it; pick on what you
-  have, not on how you want it to look. `evidence::render`'s module docs have
-  the table.
+  terminal actually showed. It and `render_svg` draw through the same
+  `screen_svg`, so an SVG still looks the same whichever produced it; pick on
+  what you have, not on how you want it to look.
+- `render_png` — plain screen text to a PNG with no external tool. It bundles
+  no font, so it paints a block per occupied cell rather than glyphs: it shares
+  the canvas, grid and palette with `render_svg` and nothing else. A PNG that
+  looks like the SVG is a rasterised one, which is `ScreenshotRenderer`.
+  `evidence::render`'s module docs have the table.
 - `generate_markdown` / `generate_junit` — human and machine reports for a run.
 - `apply_visual_diff` — compare a screenshot against a stored baseline, or
   refresh the baseline.
