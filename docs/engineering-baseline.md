@@ -109,6 +109,16 @@ and this document is updated.
   description and the issue that justifies them.
 - No feature silently changes CLI defaults or result semantics; behavior
   changes land behind explicit flags or features with tests.
+- `termproof` has two, both default-on, both from #27: `evidence` (the
+  `evidence` module — `image`, `quick-junit`, `avt`) and `json-schema`
+  (`validation`, `pyschema` and the `json_schema` built-in assertion —
+  `jsonschema`). Default is the whole crate; `default-features = false` is 72
+  transitive dependencies against 180.
+- Gates go at module boundaries. `assertions` is the one exception and is
+  contained: one `#[cfg]` match arm in `dispatch`, and one contiguous block of
+  five private functions that serve `json_schema` and nothing else.
+- Every combination is built and tested, not just `default` and
+  `--all-features`. With two features that is the full powerset of four.
 
 ## 8. Unsafe-code policy
 

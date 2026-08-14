@@ -20,6 +20,14 @@
 //! ```sh
 //! cargo test -p termproof --test differential_assertions -- --nocapture
 //! ```
+//!
+//! Fifty-eight of the 147 cases are `json_schema`, and the oracle they were
+//! recorded from always has a JSON Schema validator. Without the `json-schema`
+//! feature the port cannot answer them, so the harness would be measuring the
+//! absence of a feature rather than a parity gap — it needs the feature to say
+//! anything, and is compiled out without it.
+
+#![cfg(feature = "json-schema")]
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};

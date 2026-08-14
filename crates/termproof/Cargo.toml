@@ -27,23 +27,49 @@ categories = [
 # so they stay out of the tarball too. Every other test here is self-contained.
 exclude = ["tests/differential_steps.rs", "tests/differential_assertions.rs"]
 
+# Features gate public modules, so `docs.rs` must build with all of them on or
+# the published documentation silently loses `evidence` and `validation`.
+[package.metadata.docs.rs]
+all-features = true
+
 [lints]
 workspace = true
 
+# Feature names carry a one-line description and the issue that justifies them
+# (docs/engineering-baseline.md §7). Both features here are from #27: every
+# consumer used to compile all 18 dependencies whether or not it used them.
+#
+# There is deliberately no `terminal`/`core` split. `terminal` is the base layer
+# the crate root is built on — `recipe`, `steps`, `runner`, `execution` and
+# `build_info` all depend on it, and nothing in `terminal` depends on the root —
+# so a build without it is not the crate. It would also save no dependency:
+# `portable-pty` and `vt100` are needed by any build that drives a terminal,
+# which is every build.
+[features]
+default = ["evidence", "json-schema"]
+
+# The evidence pipeline: stills, video, Markdown/JUnit reports, baselines,
+# visual diff and upload. Gates the whole `evidence` module (#27).
+evidence = ["dep:image", "dep:quick-junit", "dep:avt"]
+
+# JSON Schema *validation*: recipe validation and the `json_schema` built-in
+# assertion. Schema *generation* (`schema`, via `schemars`) stays unconditional
+# — it costs four crates against this feature's 87 (#27).
+json-schema = ["dep:jsonschema"]
+
 # The union of what termproof-core, termproof-terminal and termproof-evidence
-# each declared. None of the three had a `[features]` table, so there is nothing
-# to reconcile there. `tempfile` was a dev-dependency of termproof-terminal and a
-# regular dependency of the other two, so the regular dependency subsumes it.
+# each declared, minus `ab_glyph`, which no code ever referenced (#27).
+# `tempfile` was a dev-dependency of termproof-terminal and a regular dependency
+# of the other two, so the regular dependency subsumes it.
 [dependencies]
-ab_glyph.workspace = true
-avt.workspace = true
+avt = { workspace = true, optional = true }
 chrono.workspace = true
 fancy-regex.workspace = true
 globset.workspace = true
-image.workspace = true
-jsonschema.workspace = true
+image = { workspace = true, optional = true }
+jsonschema = { workspace = true, optional = true }
 portable-pty.workspace = true
-quick-junit.workspace = true
+quick-junit = { workspace = true, optional = true }
 regex.workspace = true
 schemars.workspace = true
 serde.workspace = true

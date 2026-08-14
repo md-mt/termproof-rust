@@ -26,6 +26,31 @@ the only one that has ever existed on crates.io.
 - **`evidence`** is the evidence pipeline — screenshot and video rendering,
   Markdown and JUnit reports, visual baselines, diff and upload.
 
+## Features
+
+Both are on by default, so `termproof = "0.3"` is the whole crate — the shape
+that has always been published.
+
+| Feature | Enables | Costs |
+|---|---|---|
+| `evidence` | the `evidence` module | `image`, `quick-junit`, `avt` |
+| `json-schema` | `validation`, `pyschema`, and the `json_schema` built-in assertion | `jsonschema` |
+
+Turning both off takes the crate from 180 transitive dependencies to 72:
+
+```toml
+termproof = { version = "0.3", default-features = false }
+```
+
+That build still has the whole session layer and the other seven built-in
+assertions; what it loses is the evidence pipeline and JSON Schema validation.
+Schema *generation* (`schema`, via `schemars`) is unconditional — it is four
+crates, against `jsonschema`'s 87.
+
+There is no `terminal` feature. The crate root is built on `terminal` and
+nothing in `terminal` depends on the root, so a build without it would not be
+this crate; it would also save nothing, since every build drives a terminal.
+
 ## What it provides
 
 ### Root — recipes, steps, assertions, orchestration

@@ -29,3 +29,16 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
         run: cargo test --workspace
+      # `--all-features` cannot catch a feature that only builds alongside
+      # another, which is the failure mode an undeclared `dep:` produces. With
+      # two features the powerset is four, so check all of it rather than a
+      # sample (#27). `default` and `--all-features` are the same set today and
+      # the steps above already cover them.
+      - name: clippy and test each feature combination
+        run: |
+          set -eux
+          for features in "" "evidence" "json-schema" "evidence,json-schema"; do
+            cargo clippy -p termproof --all-targets \
+              --no-default-features --features "$features" -- -D warnings
+            cargo test -p termproof --no-default-features --features "$features"
+          done

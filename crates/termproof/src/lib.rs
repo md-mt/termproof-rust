@@ -29,7 +29,23 @@
 //! orchestration and execution (RUST-004 + RUST-010 + RUST-016); PTY/process
 //! ownership, terminal screen, cast recording, idle and session backends
 //! (RUST-005/006 + RUST-012 + RUST-016); and the evidence pipeline.
+//!
+//! # Features
+//!
+//! Both are on by default, so a consumer that does not name features gets the
+//! whole crate — the shape that has always been published.
+//!
+//! - **`evidence`** — the [`evidence`] module. Off, the crate does not compile
+//!   `image`, `quick-junit` or `avt`.
+//! - **`json-schema`** — [`validation`], [`pyschema`] and the `json_schema`
+//!   built-in assertion. Off, the crate does not compile `jsonschema`, and
+//!   `json_schema` is absent from [`assertions::BUILTIN_TYPES`] rather than
+//!   present and failing. Schema *generation* ([`schema`]) is unconditional.
+//!
+//! [`terminal`] has no feature of its own: the crate root is built on it, and
+//! every build drives a terminal, so there is nothing to save.
 
+#[cfg(feature = "evidence")]
 pub mod evidence;
 pub mod terminal;
 
@@ -47,6 +63,7 @@ pub mod planner;
 pub mod pypath;
 pub mod pyregex;
 pub mod pyrepr;
+#[cfg(feature = "json-schema")]
 pub mod pyschema;
 pub mod recipe;
 pub mod result;
@@ -56,12 +73,14 @@ pub mod schema;
 pub mod selection;
 pub mod steps;
 pub mod store;
+#[cfg(feature = "json-schema")]
 pub mod validation;
 pub mod vocabulary;
 
 // Re-exports: config + recipe/schema/validation (RUST-004)
 pub use config::VerifierConfig;
 pub use recipe::{Assertion, CommandSpec as RecipeCommandSpec, Recipe, Step, RECIPE_VERSION};
+#[cfg(feature = "json-schema")]
 pub use validation::{has_errors, Severity, ValidationIssue};
 
 // Re-exports: models/result/store (RUST-010) — models is legacy, result is canonical
