@@ -29,3 +29,19 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
         run: cargo test --workspace
+
+  package:
+    name: publish dry run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.96.0"
+      # Catches the metadata regressions that only bite at release time: a path
+      # dependency that lost its `version`, a file that stopped being packaged,
+      # a crate that no longer builds from its own tarball. Workspace-wide so
+      # the unpublished internal crates resolve against a local overlay rather
+      # than the registry. See docs/publishing.md.
+      - name: publish dry run
+        run: cargo publish --dry-run --workspace

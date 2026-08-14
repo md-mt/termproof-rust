@@ -114,6 +114,8 @@ authority on TermProof's behaviour.
 - `rust-toolchain.toml` — pinned toolchain (`1.96.0`, minimal profile)
 - `docs/engineering-baseline.md` — formatting, lint, error, tracing, dependency,
   feature and unsafe-code policy
+- `docs/publishing.md` — the verified crates.io publish order, the version-bump
+  rule, the pre-release checklist and what the tarballs deliberately leave out
 - `docs/rust-reimplementation-spec.md` — the design rationale, compatibility
   contract and parity gates this port is measured against. Written before the
   split, so parts of it describe a workspace under `rust/` in the Python
@@ -122,12 +124,13 @@ authority on TermProof's behaviour.
   `OBSERVATION-LOG.md`, which records what was measured and what was left out
 - `harness/` — the differential step harness: the Python probe, the checked-in
   corpus and the recorded oracle expectations
-- `crates/`
+- `crates/` — each crate carries its own `README.md`, which is what crates.io
+  renders for it
   - `termproof-cli` — binary (`termproof`), command parsing, diagnostics
   - `termproof-core` — models, config, schema, registries, planning, orchestration
   - `termproof-terminal` — PTY/tmux/process sessions, terminal screen, cast
     recording
-  - `termproof-evidence` — rendering, reports, video, baselines, diff, cache,
+  - `termproof-evidence` — rendering, reports, video, baselines, diff, dedup,
     publishing
   - `termproof-plugin-protocol` — versioned process messages, client/host support
 
@@ -158,6 +161,18 @@ the original repository, preserved so it is not stranded — including the fulle
 quality-gate tooling (`deny.toml`, a coverage baseline, a conformance corpus and
 their checker scripts) that only ever existed on `wt/rust-003-ci-gates`.
 
+## Publishing
+
+None of the five crates has been published to crates.io yet. They are ready to
+be: metadata is complete, internal dependencies carry versions, each crate has
+its own README and licence file, and `cargo publish --dry-run --workspace`
+verifies every package by building it from its own tarball. The publish order,
+the version-bump rule and the pre-release checklist are in
+[`docs/publishing.md`](docs/publishing.md). Publishing itself is a deliberate
+manual step — a crates.io name is a one-way door.
+
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Same terms as `md-mt/termproof`.
+MIT — see [LICENSE](LICENSE). Same terms as `md-mt/termproof`. Each crate
+carries its own copy of the file so it reaches the published tarball; cargo
+does not include a workspace-root `LICENSE` in a member's package.
