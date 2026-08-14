@@ -517,27 +517,27 @@ pub fn wait_for_regex<S: Session + ?Sized>(
     }
 }
 
-/// A backtracking engine can give up on a pathological pattern. An engine
-/// error is not a match, and it is not a reason to end the run either.
-fn captures_in<'t>(
-    re: &fancy_regex::Regex,
-    text: &'t str,
-) -> Option<fancy_regex::Captures<'t, str>> {
-    if text.is_empty() {
-        return None;
-    }
-    re.captures(text).ok().flatten()
-}
-
-fn try_match(
+fn try_match<'t>(
     re: &fancy_regex::Regex,
     pattern_str: &str,
     name: &str,
-    screen_text: &str,
-    raw_text: &str,
+    screen_text: &'t str,
+    raw_text: &'t str,
 ) -> Option<StepResult> {
-    let caps_opt = captures_in(re, screen_text).or_else(|| captures_in(re, raw_text));
-    let caps = caps_opt?;
+    // A backtracking engine can give up on a pathological pattern. An engine
+    // error is not a match, and it is not a reason to end the run either.
+    //
+    // A closure rather than a free function so that `fancy_regex::Captures`
+    // is never named: the type gained a haystack parameter in 0.19, and
+    // writing it either way would pin this crate to one side of that change
+    // for no gain. See the `fancy-regex` note in the workspace manifest.
+    let captures_in = |text: &'t str| {
+        if text.is_empty() {
+            return None;
+        }
+        re.captures(text).ok().flatten()
+    };
+    let caps = captures_in(screen_text).or_else(|| captures_in(raw_text))?;
     let full = caps.get(0).map(|m| m.as_str()).unwrap_or("");
     // Python's `groupdict()` carries every named group, matched or not; an
     // unmatched one renders as `None` rather than vanishing from the report.
