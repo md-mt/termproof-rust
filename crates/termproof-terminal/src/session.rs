@@ -44,6 +44,19 @@ pub trait Session: Send {
     /// Raw byte log as UTF-8 lossy string.
     fn raw_output(&self) -> &str;
 
+    /// The screen with per-cell attributes, if this backend can produce one.
+    ///
+    /// `None` is a legitimate answer, and the default: a backend that only has
+    /// text should say so rather than fabricate colours. Callers that want
+    /// colour screenshots check for `Some` and fall back to [`Session::screen`].
+    ///
+    /// Returns an owned screen rather than a borrow because backends differ in
+    /// whether they hold one: the pty backend can build it on demand from its
+    /// parser, while a capture-based backend has to shell out for it.
+    fn screen_attributed(&mut self) -> Option<crate::attributed::AttributedScreen> {
+        None
+    }
+
     /// Collected exit code, if any.
     fn exit_code(&self) -> Option<i32>;
 

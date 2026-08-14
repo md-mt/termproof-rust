@@ -259,6 +259,18 @@ impl Session for TmuxSession {
         &self.raw
     }
 
+    fn screen_attributed(&mut self) -> Option<crate::attributed::AttributedScreen> {
+        // tmux already owns a real grid; `capture-pane -e` gives it back with
+        // escapes, which the ANSI parser turns into cells. Nothing is being
+        // re-emulated here — this is the rendered truth.
+        self.refresh();
+        Some(crate::attributed::attributed_screen_from_ansi_text(
+            &self.raw,
+            self.cols as usize,
+            self.rows as usize,
+        ))
+    }
+
     fn exit_code(&self) -> Option<i32> {
         self.exit_code
     }

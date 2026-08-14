@@ -709,6 +709,12 @@ impl Session for PtySession {
         &self.screen_snapshot
     }
 
+    fn screen_attributed(&mut self) -> Option<crate::attributed::AttributedScreen> {
+        // Read live from the screen mutex rather than the snapshot `screen()`
+        // hands out: an attributed grid is only useful if it matches now.
+        self.screen.lock().ok().map(|s| s.attributed())
+    }
+
     fn raw_output(&self) -> &str {
         &self.raw_snapshot
     }

@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 termproof-core.workspace = true
 termproof-terminal.workspace = true
+avt.workspace = true
 vt100.workspace = true
 serde.workspace = true
 regex.workspace = true

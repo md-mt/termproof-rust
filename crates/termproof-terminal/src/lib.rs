@@ -1,6 +1,7 @@
 //! TermProof terminal: PTY/process ownership, terminal screen, cast recording, idle, and session backends (RUST-005/006 + RUST-012 + RUST-016).
 
 // RUST-005/006 PTY and process implementations
+pub mod attributed;
 pub mod cast;
 pub mod idle;
 pub mod proc;
