@@ -93,6 +93,14 @@ and this document is updated.
   vt100, quick-junit, and a corpus-selected regex engine).
 - Dependencies are declared once in `[workspace.dependencies]` and referenced
   with `.workspace = true` so versions stay uniform across crates.
+- A version requirement is a floor, not a preference: the lowest version the
+  code compiles and passes the differential harnesses against, established by
+  building at it rather than by reading a changelog. A floor above the oldest
+  workable version costs every vendoring consumer a duplicate copy of the
+  crate, so one that sits higher than it has to carries a comment in
+  `Cargo.toml` naming the API or behaviour that put it there (#28). The
+  `test at the declared dependency floors` step in `.github/workflows/rust.yml`
+  runs the suite at each floor, so a floor that stops being true fails CI.
 - The dependency/feature graph is kept minimal: default features are enabled
   only when needed, and optional heavy dependencies (ffmpeg/agg adapters,
   Docker) are behind features or adapter traits, never hard required.

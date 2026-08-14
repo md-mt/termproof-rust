@@ -42,3 +42,17 @@ jobs:
               --no-default-features --features "$features" -- -D warnings
             cargo test -p termproof --no-default-features --features "$features"
           done
+      # A widened requirement is a claim that the code works at the bottom of
+      # the range, and nothing above tests that: the committed lockfile resolves
+      # every range to its top. So each floor widened in #28 is pinned here and
+      # the suite is run against it. Rewriting the requirement to `=` beats
+      # `cargo update --precise`, which cannot name a crate the graph contains
+      # twice — which is exactly the fancy-regex case this widening exists to
+      # let a consumer collapse. Last step in the job: it dirties Cargo.toml
+      # and Cargo.lock, and the checkout is thrown away straight after.
+      - name: test at the declared dependency floors
+        run: |
+          set -eux
+          perl -pi -e 's{^fancy-regex = .*}{fancy-regex = "=0.16.2"}' Cargo.toml
+          perl -pi -e 's{^jsonschema = .*}{jsonschema = "=0.32.0"}' Cargo.toml
+          cargo test --workspace

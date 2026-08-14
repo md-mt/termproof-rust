@@ -50,15 +50,44 @@ all = "warn"
 # build resolves against; the version is what the published package resolves
 # against on the registry. A `path`-only dependency cannot be published at all,
 # and the two must be bumped together — see docs/publishing.md.
+#
+# A requirement here is a *floor*, not a preference: the lowest version this
+# code compiles and passes the differential harnesses against. A floor written
+# higher than it needs to be costs a vendoring consumer a second copy of the
+# crate for nothing, so where one sits above the oldest workable version there
+# is a comment naming the API that put it there (#28). The `test at the declared
+# dependency floors` step in .github/workflows/rust.yml runs the suite at each
+# floor, so a floor that stops being true fails CI rather than rotting quietly.
 [workspace.dependencies]
 termproof = { path = "crates/termproof", version = "0.3.0" }
 regex = { version = "1.13.1", default-features = false, features = ["std", "unicode"] }
-fancy-regex = "0.19.0"
+# Floor 0.16, tested at 0.16.2. `jsonschema` 0.33 asks for `^0.16` itself, so a
+# caret on 0.19 put two copies of a backtracking regex engine in the graph of
+# every default build — ours and its — which pinning to 0.16.2 now collapses.
+# Nothing here needs 0.19: the one thing that did was a type annotation naming
+# `Captures`, which gained a haystack parameter in 0.19 and is now left to
+# inference (see `steps::try_match`).
+fancy-regex = ">=0.16, <0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+# Still 0.8, and not because 1.x does not build — it does, on one import
+# rename. It is held because `JsonSchema` is derived on `Recipe` and friends, so
+# the trait is part of this crate's public API and its major is a break for any
+# consumer that names those types. Releases here bump the patch digit only, so
+# that is a decision, not a chore; see #28.
 schemars = { version = "0.8", features = ["preserve_order"] }
-jsonschema = { version = "0.33" }
+# Floor 0.32, tested at 0.32.0. 0.31 is the first version that will not build:
+# `ValidationErrorKind::OneOfMultipleValid` has no `context` field there, and
+# `pyschema` reads it to rank sub-errors the way Python's `best_match` does,
+# which FR-017 pins down. Below 0.31 more of the same API is missing —
+# `AnyOf`/`OneOfNotValid` contexts and `PrimitiveTypesBitMap::iter` at 0.29,
+# `Validator::iter_errors` as well at 0.24.
+jsonschema = { version = ">=0.32, <0.34" }
+# 0.9, not 0.8, because `ExitStatus::signal()` is 0.9's. 0.8.1 keeps the signal
+# name in a private field with no accessor, so on 0.8 a child killed by a signal
+# reports an exit code and nothing else — `Session::exit_signal` would have to
+# go. Widening this one costs a feature, so it stays (#28).
 portable-pty = "0.9"
 vt100 = "0.16"
 quick-junit = "0.4"
@@ -69,6 +98,10 @@ unicode-normalization = "0.1"
 # vt100's cell layout have to come from one Unicode table, or the same byte
 # stream lands in a different column depending on which path read it — see the
 # note on width tables in `terminal::attributed`.
+#
+# So this is not widenable while `vt100` is 0.16: that asks for `^0.2.1`, and a
+# floor of 0.1 here would resolve to a second copy *and* a second table, which
+# is both halves of what the requirement exists to prevent (#28).
 unicode-width = "0.2"
 tempfile = "3.10"
 thiserror = "2.0"
