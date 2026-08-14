@@ -17,6 +17,7 @@ pub mod error;
 pub mod inmemory;
 pub mod keys;
 pub mod session;
+pub mod tmux;
 
 pub use cast::{replay_cast, ActivityClock, CastHeader, CastRecorder};
 pub use idle::{wait_for_idle, IdleTracker};
