@@ -79,8 +79,7 @@ pub struct FailureDetector {
 }
 
 impl FailureDetector {
-    /// Line-anchored [`DEFAULT_LINE_VERBS`] only.
-    /// A line-anchored detector over [`DEFAULT_LINE_VERBS`].
+    /// A line-anchored detector over [`DEFAULT_LINE_VERBS`], and nothing else.
     pub const fn new() -> Self {
         FailureDetector {
             line_verbs: &DEFAULT_LINE_VERBS,
@@ -91,13 +90,12 @@ impl FailureDetector {
         }
     }
 
-    /// Match nothing by line; only substrings, defaulting to
-    /// [`CORE_FAILURE_MARKERS`].
-    ///
-    /// Replace that default with [`Self::anywhere`], or keep it and add to it
-    /// with [`Self::extra`].
     /// A substring detector over [`CORE_FAILURE_MARKERS`], with no line
-    /// anchoring. See the warning on [`FailureDetector`] before choosing this.
+    /// anchoring at all.
+    ///
+    /// Replace that default set with [`Self::anywhere`], or keep it and add to
+    /// it with [`Self::extra`]. See the warning on [`FailureDetector`] before
+    /// choosing this over [`Self::new`].
     pub const fn markers_only() -> Self {
         FailureDetector {
             line_verbs: &[],
