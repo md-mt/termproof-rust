@@ -60,7 +60,7 @@ serde_yaml = "0.9"
 schemars = { version = "0.8", features = ["preserve_order"] }
 jsonschema = { version = "0.33" }
 portable-pty = "0.9"
-vt100 = "0.15"
+vt100 = "0.16"
 quick-junit = "0.4"
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"

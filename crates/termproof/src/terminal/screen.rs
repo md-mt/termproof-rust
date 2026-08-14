@@ -103,7 +103,7 @@ impl TerminalScreen {
         assert!(cols > 0 && rows > 0, "cols and rows must be > 0");
         self.cols = cols;
         self.rows = rows;
-        // `Parser::set_size` truncates cells past the new width, which would
+        // `Screen::set_size` truncates cells past the new width, which would
         // make a narrow-then-widen round trip lossy. Replay instead.
         let mut parser = Parser::new(rows, cols, 0);
         parser.process(&self.raw);
