@@ -1,13 +1,17 @@
 [package]
 name = "termproof-plugin-protocol"
-description = "TermProof versioned process messages and client/host support"
+description = "Versioned newline-delimited JSON plugin protocol for TermProof, with client, host and conformance support"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
-publish = false
+readme = "README.md"
+documentation = "https://docs.rs/termproof-plugin-protocol"
+keywords = ["terminal", "plugin", "protocol", "jsonl", "ipc"]
+categories = ["development-tools::testing", "encoding", "api-bindings"]
 
 [lints]
 workspace = true

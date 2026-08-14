@@ -24,6 +24,7 @@ edition = "2021"
 rust-version = "1.96"
 license = "MIT"
 repository = "https://github.com/md-mt/termproof-rust"
+homepage = "https://github.com/md-mt/termproof-rust"
 authors = ["TermProof maintainers"]
 description = "Evidence-first verification for TUI and terminal applications (Rust reimplementation)"
 
@@ -46,10 +47,15 @@ all = "warn"
 # - jsonschema — Draft 2020-12 validation.
 # - thiserror — typed internal errors converted at boundaries.
 # - portable-pty / vt100 — real controlling tty and terminal emulation (RUST-006).
+#
+# Internal crates carry both `path` and `version`. The path is what a local
+# build resolves against; the version is what the published package resolves
+# against on the registry. A `path`-only dependency cannot be published at all,
+# and the two must be bumped together — see docs/publishing.md.
 [workspace.dependencies]
-termproof-core = { path = "crates/termproof-core" }
-termproof-terminal = { path = "crates/termproof-terminal" }
-termproof-evidence = { path = "crates/termproof-evidence" }
+termproof-core = { path = "crates/termproof-core", version = "0.2.1" }
+termproof-terminal = { path = "crates/termproof-terminal", version = "0.2.1" }
+termproof-evidence = { path = "crates/termproof-evidence", version = "0.2.1" }
 regex = { version = "1.13.1", default-features = false, features = ["std", "unicode"] }
 fancy-regex = "0.19.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -71,4 +77,4 @@ chrono = "0.4"
 globset = "0.4"
 ab_glyph = "0.2"
 clap = { version = "4.5", features = ["derive"] }
-termproof-plugin-protocol = { path = "crates/termproof-plugin-protocol" }
+termproof-plugin-protocol = { path = "crates/termproof-plugin-protocol", version = "0.2.1" }

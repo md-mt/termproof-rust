@@ -1,13 +1,22 @@
 [package]
 name = "termproof-core"
-description = "TermProof models, config, schema, registries, planning, orchestration"
+description = "Recipe model, schema, validation, planning, steps, assertions and run orchestration for TermProof"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
-publish = false
+readme = "README.md"
+documentation = "https://docs.rs/termproof-core"
+keywords = ["terminal", "tui", "testing", "verification", "cli"]
+categories = ["development-tools::testing", "development-tools", "command-line-interface"]
+# The differential tests replay `harness/corpus/`, which lives at the repository
+# root and is deliberately not shipped (~150 KB of recorded oracle output that no
+# consumer of the library needs). Without the corpus these two tests cannot run,
+# so they stay out of the tarball too. Every other test here is self-contained.
+exclude = ["tests/differential_steps.rs", "tests/differential_assertions.rs"]
 
 [lints]
 workspace = true

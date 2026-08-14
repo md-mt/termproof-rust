@@ -1,13 +1,17 @@
 [package]
 name = "termproof-terminal"
-description = "TermProof PTY/process sessions, terminal screen, cast recording"
+description = "Pseudo-terminal and process sessions, vt100 screen state and asciicast recording for TermProof"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
-publish = false
+readme = "README.md"
+documentation = "https://docs.rs/termproof-terminal"
+keywords = ["terminal", "pty", "tui", "vt100", "asciinema"]
+categories = ["command-line-interface", "os::unix-apis", "development-tools::testing"]
 
 [lints]
 workspace = true

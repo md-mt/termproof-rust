@@ -1,13 +1,17 @@
 [package]
 name = "termproof-cli"
-description = "TermProof binary: command parsing, composition, human diagnostics"
+description = "The `termproof` command line binary: discovers recipes, runs them on a pseudo-terminal and writes evidence"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 authors.workspace = true
-publish = false
+readme = "README.md"
+documentation = "https://github.com/md-mt/termproof-rust#readme"
+keywords = ["terminal", "tui", "testing", "cli", "verification"]
+categories = ["command-line-utilities", "development-tools::testing", "command-line-interface"]
 
 [lints]
 workspace = true
