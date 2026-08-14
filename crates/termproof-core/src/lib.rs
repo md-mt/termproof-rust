@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod assertions;
+pub mod build_info;
 pub mod cache;
 pub mod config;
 pub mod error;
@@ -20,6 +21,7 @@ pub mod schema;
 pub mod steps;
 pub mod store;
 pub mod validation;
+pub mod vocabulary;
 
 // Re-exports: config + recipe/schema/validation (RUST-004)
 pub use config::VerifierConfig;

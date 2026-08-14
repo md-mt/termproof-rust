@@ -3,6 +3,7 @@
 // RUST-005/006 PTY and process implementations
 pub mod cast;
 pub mod idle;
+pub mod proc;
 pub mod process;
 pub mod pty;
 pub mod pty_backend;
