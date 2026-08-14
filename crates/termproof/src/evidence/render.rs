@@ -219,6 +219,23 @@ mod tests {
     }
 
     #[test]
+    fn a_wide_glyph_occupies_two_columns_here_too() {
+        // Sharing the renderer is not enough on its own: the grid handed to it
+        // has to be laid out the same way. A text path that gives every scalar
+        // one column draws `x` on top of the second half of the wide glyph,
+        // and the still still does not match the attributed one.
+        let text = "你x";
+        let attributed = screen_svg(
+            &attributed_screen_from_ansi_text(text, 80, 24),
+            &metrics(80, 24),
+        );
+        assert_eq!(rendered(text, 80, 24), attributed + "\n");
+        // Stated in coordinates as well, so the assertion above cannot pass by
+        // both paths being wrong together: cell 0 is wide, so `x` is at cell 2.
+        assert!(rendered(text, 80, 24).contains("<text x=\"30.0\" y=\"25.8\""));
+    }
+
+    #[test]
     fn canvas_is_derived_from_the_grid() {
         // No floor: a 20x5 grid gets a 20x5 canvas, where the previous
         // renderer clamped every small screen up to 320x160.

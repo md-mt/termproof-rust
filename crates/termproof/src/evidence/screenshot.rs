@@ -15,11 +15,13 @@
 //! # The failure this shape prevents
 //!
 //! An SVG is XML, and C0 control characters are not valid in PCDATA. Emitting
-//! through a cell grid means no escape sequence can reach the document. The
-//! text-based path has no such guarantee: one unparsed escape and
-//! `rsvg-convert` rejects the whole file, which surfaces as a zero-byte PNG
-//! rather than an error. That produced an entire run of empty screenshots
-//! before this existed, and `no_control_characters_reach_the_svg` guards it.
+//! through a cell grid means no escape sequence can reach the document.
+//! `rsvg-convert` rejects a file that contains one, which surfaces as a
+//! zero-byte PNG rather than as an error — an entire run of empty screenshots
+//! with nothing to say why. `evidence::render` once wrote its SVG straight
+//! from the text and had exactly that hole; it now builds a grid and draws
+//! through the same renderer, so both paths are closed.
+//! `no_control_characters_reach_the_svg` guards this one.
 
 use std::fs;
 use std::io::Write;

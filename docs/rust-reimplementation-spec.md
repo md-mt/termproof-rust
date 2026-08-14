@@ -198,10 +198,21 @@ and semantic fields for:
 - CI receipts and before/after reports; and
 - published screenshots or evidence links.
 
-Byte-for-byte identity is required for stable JSON serialization, normalized
-text, and deterministic render fixtures where practical. For timestamps,
-durations, platform paths, terminal font rendering, and encoded video, tests
-compare normalized semantics rather than unstable bytes.
+Byte-for-byte identity is required for stable JSON serialization and
+normalized text. For timestamps, durations, platform paths, terminal font
+rendering, and encoded video, tests compare normalized semantics rather than
+unstable bytes.
+
+Stills are the exception, and deliberately so. Resolving issue #19 replaced the
+text-only SVG writer with the attributed renderer, which changes canvas size,
+cell metrics, font stack and document structure. The compatibility target for
+`evidence::render` and `evidence::screenshot` is therefore internal rather than
+cross-runtime: every still and every video frame is produced by one renderer,
+the canvas is derived from the grid rather than clamped to a floor, and a
+screen laid out from plain text occupies the same columns as the same screen
+laid out from a terminal. Those properties are asserted in unit tests. A
+Python-comparable still is no longer a requirement, and the visual fixtures a
+consumer holds against the old output need re-baselining once.
 
 ### 4.5 Plugin compatibility
 
@@ -387,7 +398,7 @@ Each row is ready to become a GitHub issue. Dependencies refer to other rows.
 | RUST-008 | M1 | **Implement built-in assertions.** Match all eight built-ins, path resolution, JSON Schema validation, diagnostics, ordering, and pass/fail serialization. | RUST-004–007 |
 | RUST-009 | M1 | **Contain step and execution failures.** Convert invalid step data, exceptions, process I/O failure, and PTY send failure into structured results; continue or stop according to the recipe contract; preserve partial artifacts. Add the regression that closes #74. | RUST-007, RUST-008 |
 | RUST-010 | M2 | **Define canonical result and artifact storage.** Preserve paths, filenames, JSON fields, atomic writes, partial-run handling, latest-report semantics, and safe concurrent output. | RUST-009 |
-| RUST-011 | M2 | **Implement text, SVG, and PNG evidence.** Render final/per-step snapshots at compatible dimensions and styling, preserve empty/error states, and pass normalized goldens. | RUST-006, RUST-010 |
+| RUST-011 | M2 | **Implement text, SVG, and PNG evidence.** Render final/per-step snapshots through one renderer, on a canvas derived from the grid, with plain-text and attributed input laying out in the same columns; preserve empty/error states. Dimensions and styling are no longer required to match the Python oracle's — see §4.4. | RUST-006, RUST-010 |
 | RUST-012 | M2 | **Implement video and idle semantics.** Detect a missing requested video as an explicit failure or warning per frozen contract, render MP4 through the backend, remove the hidden idle cap, and close #77 with tests. | RUST-006, RUST-010 |
 | RUST-013 | M2 | **Unify serialization, validation, and reports.** Generate Markdown, JUnit, aggregate reports, and CLI summaries from one RunResult model; remove duplicate logic identified in #80 without output drift. | RUST-008, RUST-010 |
 | RUST-014 | M2 | **Implement parallel runs, cache, changed paths, baselines, and visual diff.** Make ordering and output race-safe; preserve cache-key inputs, exact comparisons, update mode, and CI receipt behavior. | RUST-010–013 |

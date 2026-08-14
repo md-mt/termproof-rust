@@ -367,6 +367,13 @@ impl AttributedScreen {
 }
 
 /// A screen from plain text lines, with default attributes throughout.
+///
+/// Characters are laid out by the same rules as
+/// [`attributed_screen_from_ansi_text`] — display width, wide-glyph filler,
+/// combining marks, tab stops — so the two constructors put the same glyph in
+/// the same column. Only the attributes differ, because plain text carries
+/// none. Escape sequences are *not* interpreted here: this is verbatim text,
+/// and an escape in it occupies cells like any other character.
 pub fn attributed_screen_from_lines(
     lines: &[&str],
     columns: usize,
@@ -375,12 +382,7 @@ pub fn attributed_screen_from_lines(
     let screen_rows = lines
         .iter()
         .take(rows)
-        .map(|line| {
-            line.chars()
-                .take(columns)
-                .map(|ch| AttributedCell::plain(&ch.to_string()))
-                .collect()
-        })
+        .map(|line| cells_from_plain_line(line, columns))
         .collect();
     AttributedScreen {
         rows: screen_rows,
@@ -691,24 +693,49 @@ fn cells_from_ansi_line(line: &str, attrs: &mut AnsiAttrs, columns: usize) -> Ve
             index = consume_ansi_sequence(&chars, index, attrs);
             continue;
         }
-        let ch = chars[index];
-        if ch == '\t' {
-            append_tab(&mut cells, attrs, columns);
-        } else if canonical_combining_class(ch) != 0 && !cells.is_empty() {
-            let previous = cells.last_mut().expect("checked non-empty");
-            let combined: String = format!("{}{}", previous.text, ch).nfc().collect();
-            previous.text = combined;
-        } else {
-            let width = cell_width(ch);
-            cells.push(attrs.cell(&ch.to_string(), width));
-            if width == 2 && cells.len() < columns {
-                // Filler so the grid stays rectangular; skipped when reading text.
-                cells.push(attrs.cell("", 0));
-            }
-        }
+        push_char(&mut cells, chars[index], attrs, columns);
         index += 1;
     }
     cells
+}
+
+/// The same line, with no escape grammar: every character is content.
+fn cells_from_plain_line(line: &str, columns: usize) -> Vec<AttributedCell> {
+    let attrs = AnsiAttrs::default();
+    let mut cells: Vec<AttributedCell> = Vec::new();
+    for ch in line.chars() {
+        if cells.len() >= columns {
+            break;
+        }
+        push_char(&mut cells, ch, &attrs, columns);
+    }
+    cells
+}
+
+/// Place one character on the grid.
+///
+/// The layout rules live here, in one place, because both constructors have to
+/// agree on them: a wide glyph that occupies two columns on the ANSI path and
+/// one on the plain-text path means the same screen renders differently
+/// depending on which transport captured it, which is the whole thing
+/// `evidence::render` and `evidence::screenshot` sharing a renderer is meant to
+/// rule out.
+fn push_char(cells: &mut Vec<AttributedCell>, ch: char, attrs: &AnsiAttrs, columns: usize) {
+    if ch == '\t' {
+        append_tab(cells, attrs, columns);
+        return;
+    }
+    if canonical_combining_class(ch) != 0 && !cells.is_empty() {
+        let previous = cells.last_mut().expect("checked non-empty");
+        previous.text = format!("{}{}", previous.text, ch).nfc().collect();
+        return;
+    }
+    let width = cell_width(ch);
+    cells.push(attrs.cell(&ch.to_string(), width));
+    if width == 2 && cells.len() < columns {
+        // Filler so the grid stays rectangular; skipped when reading text.
+        cells.push(attrs.cell("", 0));
+    }
 }
 
 /// Advance past the escape sequence at `index`, applying it if it is an SGR.
@@ -1138,6 +1165,44 @@ mod tests {
             column_of_x(&screen(&text)),
             "the glyph after a wide character lands in a different column \
              depending on which path built the screen"
+        );
+    }
+
+    #[test]
+    fn the_text_path_lays_out_wide_glyphs_like_the_ansi_path() {
+        // Both stills are drawn by `screen_svg`, so the only way they can still
+        // disagree is upstream of it, in how a character is placed on the grid.
+        // Escape-free input is the fair comparison: the text path takes an
+        // escape as content, and that difference is deliberate.
+        for text in [
+            format!("{WIDTH_SPLIT_CHAR}x"),
+            "你x".to_string(),
+            "a\u{1100}b\tc".to_string(),
+            "wide 中文 mixed".to_string(),
+        ] {
+            assert_eq!(
+                attributed_screen_from_text(&text, 40, 3).rows,
+                screen(&text).rows,
+                "the text and ANSI paths built different grids for {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_text_path_reads_the_same_width_table() {
+        // The failure this pins: a constructor that hard-codes width 1 puts the
+        // next glyph one column over where every other path puts it, and no
+        // amount of sharing the renderer hides that. Asserted at the value 0.2
+        // reports, not merely as agreement, so it also fails if both paths
+        // regress onto the old table together — the drift #21 flagged.
+        let text = format!("{WIDTH_SPLIT_CHAR}x");
+        let cells = attributed_screen_from_text(&text, 40, 3);
+        let widths: Vec<u8> = cells.rows[0].iter().take(3).map(|c| c.width).collect();
+        assert_eq!(widths, vec![2, 0, 1]);
+        assert_eq!(
+            cells.rows[0].iter().position(|c| c.text == "x"),
+            Some(2),
+            "the glyph after a wide character landed in the wrong column"
         );
     }
 
