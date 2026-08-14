@@ -14,11 +14,14 @@ terminal applications. Part of
 
 ## Install
 
+**This crate is not published to crates.io.** Build it from a checkout:
+
 ```sh
-cargo install termproof-cli
+cargo build --release -p termproof-cli
 ```
 
-The installed binary is named `termproof`.
+The binary is named `termproof`. Prebuilt binaries for tagged releases are
+attached to the [GitHub releases](https://github.com/md-mt/termproof-rust/releases).
 
 ## Use
 

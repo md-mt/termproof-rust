@@ -12,6 +12,12 @@ plugins, with client, host and conformance support.
 > [the maturity section of the workspace README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it)
 > before depending on this crate.
 
+**This crate is not published to crates.io.** It is a leaf that nothing else in
+the workspace depends on, serving a plugin ecosystem that does not exist yet,
+and its shape will move as the port approaches parity — so its name is not
+being spent on the registry until the interface has settled. See
+[`docs/publishing.md`](https://github.com/md-mt/termproof-rust/blob/main/docs/publishing.md).
+
 ## What it provides
 
 - `protocol` — `Hello`, `Ready`, `Request`, `Response`, `Shutdown`,

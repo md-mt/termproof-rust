@@ -12,6 +12,11 @@ readme = "README.md"
 documentation = "https://github.com/md-mt/termproof-rust#readme"
 keywords = ["terminal", "tui", "testing", "cli", "verification"]
 categories = ["command-line-utilities", "development-tools::testing", "command-line-interface"]
+# Held back from crates.io on purpose — see docs/publishing.md. The metadata
+# above is complete and stays complete, so lifting this line is the only change
+# needed to publish. The release workflow derives its publish set from this
+# field at run time, so nothing else has to be edited either.
+publish = false
 
 [lints]
 workspace = true
