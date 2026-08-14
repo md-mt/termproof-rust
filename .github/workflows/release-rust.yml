@@ -3,8 +3,40 @@
 # belonged to the Python package and stay with it. Whether the Rust CLI is
 # distributed alongside the Python package at all is an open decision.
 #
-# UNVERIFIED: this workflow has never run in this repository. The provenance
-# attestation below needs a release identity review before the first tag.
+# UNVERIFIED: this workflow has never run end to end in this repository. The
+# build and packaging steps have been reproduced by hand for the host target
+# and the archives verify and extract, but the provenance attestation below has
+# never executed and still needs a release identity review before the first
+# tag. What it asserts — which workflow, on which ref, in which repository,
+# built a given archive — is the thing consumers verify against, and the first
+# real tag is the wrong place to discover it says something unintended.
+#
+# ## What this produces
+#
+# For each target: a `.tar.gz` of the binary, a `.sha256` beside it, and a
+# provenance attestation. All three targets' archives and checksums are
+# attached to the GitHub release for the tag. They are also kept as workflow
+# artifacts, which is the only output a `workflow_dispatch` run can have —
+# there is no release to attach to when there is no tag.
+#
+# ## Ordering, and what is recoverable
+#
+# One action — the Auto-release workflow finishing — fires two things from two
+# different events. Pushing the tag starts this build; publishing the release,
+# a few seconds later, starts publish-crates.yml. They run concurrently.
+#
+# That means a crates.io publish can succeed while this build fails. Those two
+# outcomes are not equally bad, and the asymmetry is worth stating: a crates.io
+# version is permanent — yanking hides it, it never frees the number — whereas
+# a failed binary build is re-runnable, and re-running it re-attaches the
+# archives to the same release. So the failure this ordering can produce is the
+# recoverable one. Re-run this workflow from the tag; the attach job uses
+# `--clobber` and is safe to repeat.
+#
+# The reverse — attaching binaries before committing to crates.io — would need
+# the release to be created as a draft and published only after this build
+# succeeded. That is a change to publish-crates.yml's trigger contract, not to
+# this file, and it is not made here.
 name: Release (Rust)
 
 on:
@@ -13,13 +45,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   build:
     name: Build ${{ matrix.target }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -42,16 +76,90 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
+
       - name: Package
+        env:
+          ARCHIVE: ${{ matrix.archive }}
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/termproof dist/termproof
-          tar -czf dist/${{ matrix.archive }} -C dist termproof
-          shasum -a 256 dist/${{ matrix.archive }} > dist/${{ matrix.archive }}.sha256
+          tar -czf "dist/$ARCHIVE" -C dist termproof
+          # The loose binary was only ever an input to the tarball. Leaving it
+          # in `dist/` puts a file named `termproof` in all three artifacts,
+          # and three files of the same name cannot coexist on one release.
+          rm dist/termproof
+          # Checksum from inside `dist/`, so the recorded name is the archive
+          # alone. Run from the parent it records `dist/<archive>`, and then
+          # `shasum -c` fails for anyone who downloaded the two files on their
+          # own — which is the only way these are ever used.
+          ( cd dist && shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256" )
+          cat "dist/$ARCHIVE.sha256"
+
       - uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/${{ matrix.archive }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.archive }}
-          path: dist/*
+          path: dist/${{ matrix.archive }}*
+          if-no-files-found: error
+
+  # Attaching is a separate job so it happens once, after all three targets are
+  # in, rather than three racing uploads against the same release. `needs`
+  # without `if: success()` means a target that failed to build blocks the
+  # attach — a release carrying two of three platforms and no sign of the third
+  # is worse than a release carrying none, because it looks finished.
+  attach:
+    name: Attach to release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Wait for the release to exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # The tag push that started this build and the release creation are
+          # two steps of one workflow, seconds apart, and this job is minutes
+          # behind — so the release is normally already there. It is not there
+          # when a tag was pushed by hand, and then this is a real failure
+          # rather than something to wait out: the archives stay downloadable
+          # as workflow artifacts, and re-running this job after creating the
+          # release will attach them.
+          for attempt in $(seq 1 10); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "release $TAG exists (check $attempt)"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::no GitHub release exists for tag '$TAG' after 150s, so there is nothing to attach the binaries to. They are on this run as workflow artifacts. Create the release, then re-run this job."
+          exit 1
+
+      - name: Attach the archives and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l dist
+          # `--clobber` so a re-run of a partially-failed release replaces what
+          # it already uploaded instead of erroring on "asset already exists".
+          gh release upload "$TAG" dist/*.tar.gz dist/*.tar.gz.sha256 --clobber
+          {
+            echo "### Attached to [$TAG](${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG)"
+            echo
+            for f in dist/*.tar.gz.sha256; do
+              echo "- \`$(cat "$f")\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
