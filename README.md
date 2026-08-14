@@ -109,6 +109,13 @@ nothing here should be read as a claim that it behaves the same way.
     for. `StubDockerSession` is still a stub.
   - **`--video`, `--diff`, `--update-baselines` and `--skip-unchanged` are
     parsed and ignored**, with a warning on stderr rather than silence.
+  - **A recipe cannot branch on what it observes**, and that is a decision
+    rather than a gap. Polling until something renders and acting only if it
+    did, dismissing an overlay that may or may not appear, and retrying a racy
+    step all belong in a consumer's own runner. What the crate offers such a
+    consumer instead — and why a `when` predicate and a second, imperative
+    recipe model were both declined — is
+    [`docs/conditional-recipes.md`](docs/conditional-recipes.md).
   - **Failures are not contained.** RUST-009 (issue #2) — turning recipe, step,
     plugin, process and PTY failures into structured results — is untouched
     here.
@@ -124,6 +131,8 @@ authority on TermProof's behaviour.
   feature and unsafe-code policy
 - `docs/publishing.md` — the verified crates.io publish order, the version-bump
   rule, the pre-release checklist and what the tarballs deliberately leave out
+- `docs/conditional-recipes.md` — why the recipe format stays linear, what a
+  consumer with a branching scenario uses instead, and what would reopen it
 - `docs/rust-reimplementation-spec.md` — the design rationale, compatibility
   contract and parity gates this port is measured against. Written before the
   split, so parts of it describe a workspace under `rust/` in the Python

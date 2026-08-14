@@ -490,6 +490,16 @@ reporters, the plugin protocol (`docs/plugin-protocols.md`), recipe packs
 (`docs/recipe-packs.md`), and the CLI surface including `termproof validate`'s own output
 formatting and exit codes.
 
+Out of scope by decision rather than by sequencing: **conditional execution.** The v1 format
+describes an ordered list of steps that runs the same way every time, and it does not gain a
+`when` predicate, a retry count, or any other construct that branches on observed state. An
+unknown key such as `when` is preserved by both loaders under FR-013 and read by neither
+dispatcher, so a recipe carrying one would run unconditionally on the oracle and conditionally
+on the port from a single file, with no error on either side — a format the two runtimes read
+differently is worse than a capability neither has. The reasoning, the three consumer scenarios
+it was weighed against, and the conditions that would reopen it are in
+`docs/conditional-recipes.md`.
+
 ---
 
 ## Open Questions

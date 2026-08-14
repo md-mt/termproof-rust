@@ -114,6 +114,14 @@ the contract both implementations answer to.
   call into the corresponding `evidence` functions; they are reachable as a
   library API, not from a `termproof run`.
 
+A recipe also cannot branch on what it observes, and that one is a decision
+rather than a gap. A scenario that polls until something renders and acts only
+if it did, dismisses an overlay that may or may not appear, or retries a racy
+step, belongs in the consumer's own runner — driving `terminal` directly, using
+`evidence`, and building a `result::RunResult` itself so `parity`, `before_after`
+and the reporters still apply. `docs/conditional-recipes.md` in the repository
+has the reasoning and the reversal conditions.
+
 ## Package contents
 
 The two differential tests (`tests/differential_steps.rs`,

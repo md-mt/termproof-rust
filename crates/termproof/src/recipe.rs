@@ -4,6 +4,24 @@
 //! flattened `extension` maps rather than discarding them. Additional
 //! properties are permitted at the recipe, command, step, and assertion level
 //! (see JSON Schema `additionalProperties: true`).
+//!
+//! # A recipe is linear, on purpose
+//!
+//! [`Recipe::steps`] runs in order, once, the same way every time. There is no
+//! `when` predicate, no retry count, and no second, imperative recipe model
+//! beside this one — a scenario that polls until something renders and acts
+//! only if it did, dismisses an overlay that may or may not appear, or retries
+//! a racy step, is not expressible here and is not meant to be.
+//!
+//! That is a decision rather than a gap, and the reasoning turns on the very
+//! tolerance described above: an unknown step key lands in [`Step::extra`] and
+//! is ignored by both runtimes, so a `when` this crate honoured would be one
+//! the Python oracle silently skipped, and a single recipe file would mean two
+//! different things. Consumers with a branching scenario keep their own runner,
+//! drive [`crate::terminal`] directly, and build a [`crate::result::RunResult`]
+//! themselves — which keeps [`crate::parity`], [`crate::before_after`] and the
+//! reporters available to them. See `docs/conditional-recipes.md` for the three
+//! scenarios this was weighed against and the conditions that would reopen it.
 
 use std::collections::HashMap;
 use std::path::Path;
