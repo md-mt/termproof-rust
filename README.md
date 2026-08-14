@@ -29,9 +29,10 @@ nothing here should be read as a claim that it behaves the same way.
   `send_text`, `send_line` and `press` row — now spawn a real pseudo-terminal
   child on both sides, so the pty write path is in frame where it was not
   before. Screen fidelity — rendering, scrollback, escape sequences — is still
-  outside it, as are whole-recipe execution and the assertion layer, and no
-  equivalent measurement exists for them. Reading 82 of 115 as a parity figure
-  for the port would be wrong.
+  outside it, as is whole-recipe execution, and no equivalent measurement exists
+  for either. The assertion layer has a measurement of its own, below; the step
+  and assertion corpora are the only two that exist. Reading 82 of 115 as a
+  parity figure for the port would be wrong.
 - Known defects and divergences, in rough severity order: the in-memory session
   double `InMemorySession` encodes test-passing rather than PTY semantics —
   `wait_for_text` answers from fixed content and ignores its deadline, and
@@ -67,6 +68,30 @@ nothing here should be read as a claim that it behaves the same way.
   divergences are enumerated in `harness/README.md` — four are the only rows
   where the two runtimes disagree on pass/fail, and they come from Python's JSON
   decoder accepting `NaN` and `Infinity`.
+- **There is new library surface that no command reaches yet.** Eight modules
+  landed as APIs with tests and no caller, so they are worth knowing about and
+  worth not mistaking for features:
+  - `termproof-terminal` grew `attributed`, a per-cell screen carrying
+    foreground, background, bold, dim, italic, underline, strikethrough,
+    reverse and display width, with an SVG renderer; `tmux`, a `Session` that
+    runs the program in a tmux pane and reads the grid back with
+    `capture-pane`, so a disagreement between it and the `vt100` path is an
+    emulation gap made visible; and `proc`, child processes with a deadline.
+  - `termproof-evidence` grew `screenshot` and `cast_video`, which render
+    stills and video frames through that one renderer rather than two unrelated
+    ones; `dedup`, which skips re-rendering a screen identical to the step
+    before it; and `uploader`, a publishing seam with a fallback chain that
+    records which store it fell back from.
+  - `termproof-core` grew `parity`, which compares two runs and reports where
+    they disagree; `before_after`, which reports which outcomes flipped;
+    `selection`, which maps a changeset onto recipes via `ci_paths`;
+    `run_config`, a whole run described by one file; and `vocabulary`, a
+    configurable failure detector.
+
+  **None of this is wired into `termproof run`.** The screenshots a run writes
+  today are still the single-colour text path, no run uses the tmux backend or
+  the deduper, and nothing calls the uploader. Treat these as a library a
+  caller could build on, not as behaviour the CLI has.
 - **What a run still cannot do**, so that a green exit is not read as more than
   it is:
   - **Only `execution: scripted` on a pty runs.** A recipe whose
@@ -100,8 +125,10 @@ authority on TermProof's behaviour.
 - `crates/`
   - `termproof-cli` — binary (`termproof`), command parsing, diagnostics
   - `termproof-core` — models, config, schema, registries, planning, orchestration
-  - `termproof-terminal` — PTY/process sessions, terminal screen, cast recording
-  - `termproof-evidence` — rendering, reports, video, baselines, diff, cache
+  - `termproof-terminal` — PTY/tmux/process sessions, terminal screen, cast
+    recording
+  - `termproof-evidence` — rendering, reports, video, baselines, diff, cache,
+    publishing
   - `termproof-plugin-protocol` — versioned process messages, client/host support
 
 ## Quickstart
