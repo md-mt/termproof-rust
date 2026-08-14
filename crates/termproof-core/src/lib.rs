@@ -7,6 +7,7 @@ pub mod config;
 pub mod error;
 pub mod execution;
 pub mod models;
+pub mod parity;
 pub mod planner;
 pub mod pypath;
 pub mod pyregex;
