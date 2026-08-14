@@ -13,6 +13,10 @@
 //! | an [`AttributedScreen`] | an SVG document, in memory | [`screen_svg`] |
 //! | a cast | an MP4 | [`CastVideoConverter`](crate::evidence::cast_video::CastVideoConverter) |
 //!
+//! The MP4 row is the one to read twice: it holds for `CastVideoConverter`,
+//! not for the default video backend, which is still `agg_ffmpeg` and draws
+//! with its own fonts and palette. See [`evidence`](crate::evidence).
+//!
 //! Reach for this module only when all you have is text. It renders in the
 //! default foreground on the default background, because plain text carries no
 //! colour — it cannot recover what the terminal actually showed. When the
