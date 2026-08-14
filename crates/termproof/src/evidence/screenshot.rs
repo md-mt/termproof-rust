@@ -1,10 +1,11 @@
 //! Rendering a screen to an image.
 //!
-//! [`render_svg`](crate::evidence::render::render_svg) takes text and emits one colour on
-//! one background. This takes an
-//! [`AttributedScreen`](crate::terminal::attributed::AttributedScreen) and
-//! emits what the terminal actually showed: per-cell foreground, background,
-//! bold, italic, underline, reverse.
+//! This takes an [`AttributedScreen`] and emits what the terminal actually
+//! showed: per-cell foreground, background, bold, italic, underline, reverse.
+//! Reach for it whenever the transport can supply a grid.
+//! [`evidence::render`](crate::evidence::render) is the text-only entry point,
+//! for when it cannot — same renderer underneath, but plain text carries no
+//! colour to draw. Its module docs have the full table.
 //!
 //! SVG first, then `rsvg-convert` for the PNG. Going through SVG rather than
 //! drawing pixels keeps the output resolution-independent and the intermediate

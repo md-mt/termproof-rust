@@ -1,5 +1,14 @@
 //! Evidence pipeline: rendering, reports, video, baselines, diff,
 //! and cache.
+//!
+//! Every still and every video frame is drawn by
+//! [`screen_svg`](crate::terminal::attributed::screen_svg), so all the
+//! evidence from one run shares a visual language. The entry points differ
+//! only in what they take: [`render`] takes plain text, [`screenshot`] takes
+//! an attributed grid, [`cast_video`] takes a cast. [`render`]'s module docs
+//! carry the table. The exception is [`AggFfmpegBackend`], which shells out to
+//! `agg` and brings its own fonts and palette — see [`cast_video`] for the
+//! consistent alternative.
 
 pub mod cast_video;
 pub mod dedup;
