@@ -1629,23 +1629,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "termproof-cli"
+name = "termproof"
 version = "0.2.1"
 dependencies = [
- "clap",
- "serde_json",
- "termproof-core",
- "termproof-evidence",
-]
-
-[[package]]
-name = "termproof-core"
-version = "0.2.1"
-dependencies = [
+ "ab_glyph",
+ "avt",
  "chrono",
  "fancy-regex 0.19.0",
  "globset",
+ "image",
  "jsonschema",
+ "portable-pty",
+ "quick-junit",
  "regex",
  "schemars",
  "serde",
@@ -1653,25 +1648,19 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tempfile",
- "termproof-terminal",
  "thiserror 2.0.19",
+ "unicode-normalization",
+ "unicode-width",
+ "vt100",
 ]
 
 [[package]]
-name = "termproof-evidence"
+name = "termproof-cli"
 version = "0.2.1"
 dependencies = [
- "ab_glyph",
- "avt",
- "image",
- "quick-junit",
- "serde",
+ "clap",
  "serde_json",
- "tempfile",
- "termproof-core",
- "termproof-terminal",
- "thiserror 2.0.19",
- "vt100",
+ "termproof",
 ]
 
 [[package]]
@@ -1680,25 +1669,8 @@ version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
- "termproof-core",
- "termproof-terminal",
+ "termproof",
  "thiserror 2.0.19",
-]
-
-[[package]]
-name = "termproof-terminal"
-version = "0.2.1"
-dependencies = [
- "chrono",
- "portable-pty",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.19",
- "unicode-normalization",
- "unicode-width",
- "vt100",
 ]
 
 [[package]]

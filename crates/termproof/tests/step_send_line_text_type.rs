@@ -18,8 +18,8 @@ use std::path::PathBuf;
 
 use serde_json::json;
 
-use termproof_core::steps;
-use termproof_terminal::{InMemorySession, Session};
+use termproof::steps;
+use termproof::terminal::{InMemorySession, Session};
 
 fn session() -> InMemorySession {
     InMemorySession::new(vec!["sh".into()], PathBuf::from("/tmp/cast"), 80, 24)

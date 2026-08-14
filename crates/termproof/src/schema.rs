@@ -64,7 +64,7 @@ pub fn load_canonical_schema() -> Option<serde_json::Value> {
         std::path::Path::new("../docs/recipe-schema-v1.json"),
         // When run with cwd = Python repository root
         std::path::Path::new("docs/recipe-schema-v1.json"),
-        // When run with cwd = <python-repo>/rust/crates/termproof-core
+        // When run with cwd = <python-repo>/rust/crates/termproof
         std::path::Path::new("../../../docs/recipe-schema-v1.json"),
     ] {
         if candidate.exists() {

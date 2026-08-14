@@ -1,4 +1,4 @@
-//! TermProof evidence pipeline: rendering, reports, video, baselines, diff,
+//! Evidence pipeline: rendering, reports, video, baselines, diff,
 //! and cache.
 
 pub mod cast_video;

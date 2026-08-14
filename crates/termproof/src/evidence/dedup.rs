@@ -10,7 +10,7 @@
 //! # Attributes count
 //!
 //! Deduplication keys on
-//! [`AttributedScreen::render_fingerprint`](termproof_terminal::attributed::AttributedScreen::render_fingerprint),
+//! [`AttributedScreen::render_fingerprint`](crate::terminal::attributed::AttributedScreen::render_fingerprint),
 //! not on text. Two screens with the same characters but a different highlight
 //! are *different screenshots*, and a text-keyed cache would silently collapse
 //! them — losing exactly the frame where a selection moved.
@@ -23,8 +23,8 @@
 //! step 2" nine steps later costs the reader more than the image saves.
 //!
 //! ```
-//! use termproof_evidence::dedup::Deduper;
-//! # use termproof_terminal::attributed::attributed_screen_from_text;
+//! use termproof::evidence::dedup::Deduper;
+//! # use termproof::terminal::attributed::attributed_screen_from_text;
 //! let mut deduper = Deduper::default();
 //!
 //! let menu = attributed_screen_from_text("menu open", 20, 2);
@@ -36,7 +36,7 @@
 //! assert_eq!(deduper.check("closed", &gone), None);
 //! ```
 
-use termproof_terminal::attributed::AttributedScreen;
+use crate::terminal::attributed::AttributedScreen;
 
 /// Decides whether a screen needs rendering, or matches the previous one.
 #[derive(Debug, Default, Clone)]
@@ -96,8 +96,8 @@ impl Deduper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use termproof_terminal::attributed::attributed_screen_from_ansi_text;
-    use termproof_terminal::attributed::attributed_screen_from_text;
+    use crate::terminal::attributed::attributed_screen_from_ansi_text;
+    use crate::terminal::attributed::attributed_screen_from_text;
 
     fn text(s: &str) -> AttributedScreen {
         attributed_screen_from_text(s, 20, 2)

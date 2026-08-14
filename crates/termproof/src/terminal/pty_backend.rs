@@ -9,10 +9,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::backend::SessionBackend;
-use crate::error::SessionError;
-use crate::pty::{PtyConfig, PtySession};
-use crate::session::Session;
+use crate::terminal::backend::SessionBackend;
+use crate::terminal::error::SessionError;
+use crate::terminal::pty::{PtyConfig, PtySession};
+use crate::terminal::session::Session;
 
 /// Backend that runs the command on a real pseudo-terminal.
 #[derive(Debug, Clone, Default)]

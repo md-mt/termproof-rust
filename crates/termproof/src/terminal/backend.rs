@@ -3,14 +3,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::error::SessionError;
-use crate::session::Session;
+use crate::terminal::error::SessionError;
+use crate::terminal::session::Session;
 
 /// Backend that creates terminal sessions.
 ///
 /// Built-ins use this via `ExecutionContext::create_session` rather than
 /// constructing `TerminalSession` directly. Custom backends (e.g. Docker) go
-/// through the same public surface — see `crate::docker`.
+/// through the same public surface — see `crate::terminal::docker`.
 pub trait SessionBackend: Send + Sync {
     /// Create a new session for the given command.
     fn create_session(

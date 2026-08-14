@@ -4,8 +4,8 @@
 //! comparison; SVG diff falls back to side-by-side embedding with base64
 //! data URIs.  Update mode copies the current screenshot to the baseline.
 
+use crate::{AssertionResult, RunResult};
 use std::path::{Path, PathBuf};
-use termproof_core::{AssertionResult, RunResult};
 
 /// Apply visual diff to `result` against `baseline_root`.
 ///

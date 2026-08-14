@@ -10,9 +10,9 @@
 
 use std::time::Duration;
 
-use termproof_core::execution::ExecutionContext;
-use termproof_core::models::{AssertionResult, Recipe, StepResult};
-use termproof_terminal::Session;
+use termproof::execution::ExecutionContext;
+use termproof::models::{AssertionResult, Recipe, StepResult};
+use termproof::terminal::Session;
 
 /// The smallest context that satisfies the trait; every method under test is a
 /// provided one, so the required bodies are never called.
@@ -27,7 +27,7 @@ impl ExecutionContext for Probe {
         _cols: u16,
         _rows: u16,
         _cast_path: std::path::PathBuf,
-    ) -> Result<Box<dyn Session>, termproof_core::execution::ExecutionError> {
+    ) -> Result<Box<dyn Session>, termproof::execution::ExecutionError> {
         unreachable!("recipe_timeout does not create a session")
     }
 

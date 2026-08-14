@@ -28,8 +28,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value as JsonValue};
 
-use termproof_core::steps;
-use termproof_terminal::InMemorySession;
+use termproof::steps;
+use termproof::terminal::InMemorySession;
 
 /// `InMemorySession` answers a wait from its fixed content and ignores the
 /// deadline, so a step that coerced `0.0` and a step that coerced `10.0` look

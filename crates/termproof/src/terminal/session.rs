@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use crate::error::SessionError;
+use crate::terminal::error::SessionError;
 
 /// Public session trait.
 ///
@@ -53,7 +53,7 @@ pub trait Session: Send {
     /// Returns an owned screen rather than a borrow because backends differ in
     /// whether they hold one: the pty backend can build it on demand from its
     /// parser, while a capture-based backend has to shell out for it.
-    fn screen_attributed(&mut self) -> Option<crate::attributed::AttributedScreen> {
+    fn screen_attributed(&mut self) -> Option<crate::terminal::attributed::AttributedScreen> {
         None
     }
 

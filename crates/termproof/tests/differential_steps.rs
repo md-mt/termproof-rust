@@ -13,7 +13,7 @@
 //! Run it with output:
 //!
 //! ```sh
-//! cargo test -p termproof-core --test differential_steps -- --nocapture
+//! cargo test -p termproof --test differential_steps -- --nocapture
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -23,9 +23,9 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value as JsonValue};
 
-use termproof_core::result::StepResult;
-use termproof_core::steps;
-use termproof_terminal::{
+use termproof::result::StepResult;
+use termproof::steps;
+use termproof::terminal::{
     InMemorySession, PtySessionBackend, Session, SessionBackend, SessionError,
 };
 
@@ -295,7 +295,7 @@ fn run_case(step: JsonValue, spec: Spec, index: usize) -> Outcome {
 }
 
 fn corpus_path() -> PathBuf {
-    // CARGO_MANIFEST_DIR is crates/termproof-core.
+    // CARGO_MANIFEST_DIR is crates/termproof.
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/corpus/steps.expected.json")
 }
 

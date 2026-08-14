@@ -1,8 +1,8 @@
 //! Rendering a screen to an image.
 //!
-//! [`render_svg`](crate::render::render_svg) takes text and emits one colour on
+//! [`render_svg`](crate::evidence::render::render_svg) takes text and emits one colour on
 //! one background. This takes an
-//! [`AttributedScreen`](termproof_terminal::attributed::AttributedScreen) and
+//! [`AttributedScreen`](crate::terminal::attributed::AttributedScreen) and
 //! emits what the terminal actually showed: per-cell foreground, background,
 //! bold, italic, underline, reverse.
 //!
@@ -25,18 +25,18 @@ use std::io::Write;
 use std::process::Command;
 use std::time::Duration;
 
-use termproof_terminal::attributed::attributed_screen_from_text;
-use termproof_terminal::attributed::screen_svg;
-use termproof_terminal::attributed::AttributedScreen;
-use termproof_terminal::attributed::SvgMetrics;
-use termproof_terminal::attributed::DEFAULT_CELL_H;
-use termproof_terminal::attributed::DEFAULT_CELL_W;
-use termproof_terminal::attributed::DEFAULT_COLUMNS;
-use termproof_terminal::attributed::DEFAULT_FONT_PX;
-use termproof_terminal::attributed::DEFAULT_PADDING;
-use termproof_terminal::attributed::DEFAULT_ROWS;
-use termproof_terminal::proc::combined_output;
-use termproof_terminal::proc::run_with_timeout;
+use crate::terminal::attributed::attributed_screen_from_text;
+use crate::terminal::attributed::screen_svg;
+use crate::terminal::attributed::AttributedScreen;
+use crate::terminal::attributed::SvgMetrics;
+use crate::terminal::attributed::DEFAULT_CELL_H;
+use crate::terminal::attributed::DEFAULT_CELL_W;
+use crate::terminal::attributed::DEFAULT_COLUMNS;
+use crate::terminal::attributed::DEFAULT_FONT_PX;
+use crate::terminal::attributed::DEFAULT_PADDING;
+use crate::terminal::attributed::DEFAULT_ROWS;
+use crate::terminal::proc::combined_output;
+use crate::terminal::proc::run_with_timeout;
 
 const RSVG_CONVERT: &str = "/usr/bin/rsvg-convert";
 const TOOL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -188,9 +188,9 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use termproof_terminal::attributed::attributed_screen_from_ansi_text;
-    use termproof_terminal::attributed::DEFAULT_BG;
-    use termproof_terminal::attributed::DEFAULT_FG;
+    use crate::terminal::attributed::attributed_screen_from_ansi_text;
+    use crate::terminal::attributed::DEFAULT_BG;
+    use crate::terminal::attributed::DEFAULT_FG;
 
     /// A renderer whose runner records the SVG handed to `rsvg-convert`.
     fn capturing_renderer() -> (ScreenshotRenderer, Arc<Mutex<String>>) {

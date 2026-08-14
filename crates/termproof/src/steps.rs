@@ -20,7 +20,7 @@ use serde_json::Value as JsonValue;
 
 use crate::pyrepr::{repr_f64, repr_json, repr_str, repr_tuple, type_name};
 use crate::result::StepResult;
-use termproof_terminal::Session;
+use crate::terminal::Session;
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -641,9 +641,9 @@ pub fn run_steps<S: Session + ?Sized>(session: &mut S, steps: &[JsonValue]) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::terminal::InMemorySession;
     use serde_json::json;
     use std::path::PathBuf;
-    use termproof_terminal::InMemorySession;
 
     fn sess(screen: &str, raw: &str) -> InMemorySession {
         let mut s = InMemorySession::new(vec!["sh".into()], PathBuf::from("/tmp/cast"), 80, 24);

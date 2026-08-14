@@ -1,6 +1,6 @@
 //! A terminal screen with per-cell attributes, and SVG rendering.
 //!
-//! [`TerminalScreen`](crate::screen::TerminalScreen) answers "what text is on
+//! [`TerminalScreen`](crate::terminal::screen::TerminalScreen) answers "what text is on
 //! screen". This answers "what does the screen *look* like": every cell with
 //! its foreground, background, bold, italic, underline, reverse and display
 //! width, plus a renderer that turns that into SVG.
@@ -468,7 +468,7 @@ fn vt100_color(color: vt100::Color) -> String {
 ///
 /// Public so a caller emulating with something other than `vt100` can build
 /// [`AttributedCell`]s without this crate taking a dependency on their
-/// emulator. [`crate::attributed`] stays `vt100`-only for that reason.
+/// emulator. [`crate::terminal::attributed`] stays `vt100`-only for that reason.
 pub fn palette_color(index: u16) -> String {
     if (index as usize) < COLORS.len() {
         COLORS[index as usize].0.to_string()

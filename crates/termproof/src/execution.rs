@@ -64,12 +64,12 @@ pub trait ExecutionContext: Send {
         cols: u16,
         rows: u16,
         cast_path: PathBuf,
-    ) -> Result<Box<dyn termproof_terminal::Session>, ExecutionError>;
+    ) -> Result<Box<dyn crate::terminal::Session>, ExecutionError>;
 
     /// Execute a single step through the registered step registry.
     fn run_step(
         &mut self,
-        session: &mut dyn termproof_terminal::Session,
+        session: &mut dyn crate::terminal::Session,
         step: &Value,
         index: usize,
     ) -> StepResult;

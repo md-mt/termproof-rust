@@ -1,6 +1,6 @@
 [package]
-name = "termproof-core"
-description = "Recipe model, schema, validation, planning, steps, assertions, selection and run orchestration for TermProof"
+name = "termproof"
+description = "Evidence-first verification for TUI and terminal applications: recipe model, schema, steps, assertions, orchestration, terminal sessions and the evidence pipeline"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,18 @@ repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
 readme = "README.md"
-documentation = "https://docs.rs/termproof-core"
-keywords = ["terminal", "tui", "testing", "verification", "cli"]
-categories = ["development-tools::testing", "development-tools", "command-line-interface"]
+documentation = "https://docs.rs/termproof"
+# crates.io caps both lists at five, so these are the union of what the three
+# merged crates carried, trimmed to the five that describe the whole library
+# rather than any one former crate.
+keywords = ["terminal", "tui", "testing", "verification", "pty"]
+categories = [
+    "development-tools::testing",
+    "development-tools",
+    "command-line-interface",
+    "os::unix-apis",
+    "visualization",
+]
 # The differential tests replay `harness/corpus/`, which lives at the repository
 # root and is deliberately not shipped (~150 KB of recorded oracle output that no
 # consumer of the library needs). Without the corpus these two tests cannot run,
@@ -21,17 +30,28 @@ exclude = ["tests/differential_steps.rs", "tests/differential_assertions.rs"]
 [lints]
 workspace = true
 
+# The union of what termproof-core, termproof-terminal and termproof-evidence
+# each declared. None of the three had a `[features]` table, so there is nothing
+# to reconcile there. `tempfile` was a dev-dependency of termproof-terminal and a
+# regular dependency of the other two, so the regular dependency subsumes it.
 [dependencies]
-regex.workspace = true
+ab_glyph.workspace = true
+avt.workspace = true
+chrono.workspace = true
 fancy-regex.workspace = true
-serde.workspace = true
 globset.workspace = true
+image.workspace = true
+jsonschema.workspace = true
+portable-pty.workspace = true
+quick-junit.workspace = true
+regex.workspace = true
+schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
-schemars.workspace = true
-jsonschema.workspace = true
 sha2.workspace = true
-chrono.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-termproof-terminal.workspace = true
+unicode-normalization.workspace = true
+unicode-width.workspace = true
+vt100.workspace = true

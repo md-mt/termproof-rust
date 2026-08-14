@@ -1,4 +1,37 @@
-//! TermProof core: models, config, schema, registries, planning, orchestration, and execution (RUST-004 + RUST-010 + RUST-016).
+//! TermProof: evidence-first verification for TUI and terminal applications.
+//!
+//! # Layout
+//!
+//! This crate was merged from three (`termproof-core`, `termproof-terminal`,
+//! `termproof-evidence`) before any of them was published, so the shape below
+//! is the only one that has ever existed on crates.io.
+//!
+//! - **The crate root** is what was `termproof-core`: the recipe model,
+//!   config, schema, validation, the built-in [`steps`] and [`assertions`],
+//!   [`planner`]/[`runner`]/[`execution`], [`store`]/[`cache`], and the
+//!   `py*` compatibility shims that keep this port close to the Python
+//!   oracle. It is flat rather than under a `core` module, both because it is
+//!   the crate's primary surface and because a module named `core` shadows the
+//!   `core` crate for every path in its scope.
+//! - **[`terminal`]** is what was `termproof-terminal`: PTY, tmux and process
+//!   sessions, plain and attributed screen state, asciicast recording, idle
+//!   detection and the [`terminal::SessionBackend`] implementations.
+//! - **[`evidence`]** is what was `termproof-evidence`: screenshot and video
+//!   rendering, Markdown and JUnit reports, visual baselines, diff and upload.
+//!
+//! The two nested modules keep their own re-exports rather than flattening
+//! into the root. `error` is defined by both the root and [`terminal`], so
+//! nesting is what keeps [`crate::error`] and [`terminal::error`] apart; the
+//! same nesting keeps [`crate::result`] clear of [`evidence::report`], and
+//! keeps the reader's sense of which layer a name comes from.
+//!
+//! Original module notes: models, config, schema, registries, planning,
+//! orchestration and execution (RUST-004 + RUST-010 + RUST-016); PTY/process
+//! ownership, terminal screen, cast recording, idle and session backends
+//! (RUST-005/006 + RUST-012 + RUST-016); and the evidence pipeline.
+
+pub mod evidence;
+pub mod terminal;
 
 pub mod agent;
 pub mod assertions;

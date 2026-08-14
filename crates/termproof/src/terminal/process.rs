@@ -7,12 +7,12 @@
 //!
 //! # Merge dependency
 //!
-//! The canonical recipe model (`CommandSpec`, `Recipe`) lands in
-//! `termproof-core` under RUST-004. This module scaffolds against the expected
+//! The canonical recipe model (`CommandSpec`, `Recipe`) lands at the crate
+//! root under RUST-004. This module scaffolds against the expected
 //! interface: `ProcessConfig` mirrors `CommandSpec { argv, cwd, env, pty:false }`
-//! and will be constructed from `termproof_core::models::CommandSpec` once that
-//! crate publishes the typed recipe. The `SessionBackend` trait that will wrap
-//! this struct is likewise deferred to `termproof-core` / `termproof-terminal`
+//! and will be constructed from `crate::models::CommandSpec` once the root
+//! publishes the typed recipe. The `SessionBackend` trait that will wrap
+//! this struct is likewise deferred to root/[`crate::terminal`]
 //! integration in RUST-007. Until then the struct is usable directly and via
 //! the re-exported helpers below. Treat RUST-004 as a merge prerequisite: no
 //! behaviour here depends on an unpublished model, but the final wiring does.
@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 /// Configuration for a non-PTY child process.
 ///
 /// Mirrors the `command` block of a TermProof recipe when `command.pty` is
-/// `false`. Callers that already have a `termproof_core::models::CommandSpec`
+/// `false`. Callers that already have a `crate::models::CommandSpec`
 /// should map it field-for-field into this struct.
 #[derive(Debug, Clone)]
 pub struct ProcessConfig {

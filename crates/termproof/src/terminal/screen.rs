@@ -80,8 +80,8 @@ impl TerminalScreen {
     /// answers "what does it look like" — colour, emphasis, cursor. Built on
     /// demand from the parser rather than maintained alongside it, so callers
     /// that never ask pay nothing.
-    pub fn attributed(&self) -> crate::attributed::AttributedScreen {
-        crate::attributed::from_vt100(self.parser.screen())
+    pub fn attributed(&self) -> crate::terminal::attributed::AttributedScreen {
+        crate::terminal::attributed::from_vt100(self.parser.screen())
     }
 
     /// Current plain-text contents, normalized like Python `screen_text`.

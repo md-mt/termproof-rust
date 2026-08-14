@@ -14,8 +14,8 @@
 use std::process::Command;
 use std::time::Duration;
 
-use termproof_terminal::proc::combined_output;
-use termproof_terminal::proc::run_with_timeout;
+use crate::terminal::proc::combined_output;
+use crate::terminal::proc::run_with_timeout;
 
 const MAX_ERROR_LENGTH: usize = 500;
 const TOOL_TIMEOUT: Duration = Duration::from_secs(120);

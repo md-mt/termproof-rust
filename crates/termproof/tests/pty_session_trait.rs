@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use termproof_terminal::{PtyConfig, PtySession, Session, SessionError};
+use termproof::terminal::{PtyConfig, PtySession, Session, SessionError};
 
 fn spawned(argv: &[&str]) -> PtySession {
     let config = PtyConfig::new(argv.iter().map(|s| (*s).to_string()).collect());

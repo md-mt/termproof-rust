@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
-use termproof_terminal::proc::run_with_timeout;
+use crate::terminal::proc::run_with_timeout;
 
 /// Best-effort `<binary> --version`; `"unknown"` on any failure.
 fn probe_version(binary_path: &str) -> String {
@@ -92,7 +92,7 @@ impl BuildInfo {
             change_id: None,
             commit_hash: None,
             build_target: None,
-            build_timestamp: Some(termproof_terminal::proc::timestamp()),
+            build_timestamp: Some(crate::terminal::proc::timestamp()),
         }
     }
 
@@ -115,7 +115,7 @@ impl BuildInfo {
             change_id,
             commit_hash,
             build_target: Some(build_target.to_string()),
-            build_timestamp: Some(termproof_terminal::proc::timestamp()),
+            build_timestamp: Some(crate::terminal::proc::timestamp()),
         }
     }
 }

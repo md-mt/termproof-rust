@@ -35,8 +35,8 @@
 //! comparison, because it looks like success.
 //!
 //! ```
-//! use termproof_core::parity::{compare, summarize, Divergence};
-//! # use termproof_core::result::RunResult;
+//! use termproof::parity::{compare, summarize, Divergence};
+//! # use termproof::result::RunResult;
 //! # use std::collections::BTreeMap;
 //! # fn run(name: &str, passed: bool) -> RunResult {
 //! #     RunResult { recipe_name: name.into(), passed, exit_code: None,
@@ -49,7 +49,7 @@
 //!
 //! let divergences = compare(&before, &after, "before", "after")?;
 //! assert!(matches!(divergences[0], Divergence::Verdict { .. }));
-//! # Ok::<(), termproof_core::parity::ParityError>(())
+//! # Ok::<(), termproof::parity::ParityError>(())
 //! ```
 
 use std::collections::BTreeMap;

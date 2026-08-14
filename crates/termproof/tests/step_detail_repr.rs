@@ -16,8 +16,8 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value as JsonValue};
 
-use termproof_core::steps;
-use termproof_terminal::InMemorySession;
+use termproof::steps;
+use termproof::terminal::InMemorySession;
 
 fn detail(screen: &str, step: JsonValue) -> String {
     let mut s = InMemorySession::new(vec!["sh".into()], PathBuf::from("/tmp/cast"), 80, 24);

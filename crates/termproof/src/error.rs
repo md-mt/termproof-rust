@@ -1,4 +1,4 @@
-//! Typed internal errors for `termproof-core`.
+//! Typed internal errors for the crate root.
 //!
 //! These errors are converted at the crate boundary into stable diagnostics
 //! (exit codes, `ValidationIssue` paths). They use `thiserror` for ergonomic

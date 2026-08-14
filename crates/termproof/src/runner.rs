@@ -17,7 +17,7 @@ use std::time::Instant;
 
 use serde_json::Value;
 
-use termproof_terminal::{PtySessionBackend, Session, SessionBackend};
+use crate::terminal::{PtySessionBackend, Session, SessionBackend};
 
 use crate::error::CoreError;
 use crate::execution::{ExecutionContext, ExecutionError, ExecutionMode, ScriptedPtyMode};

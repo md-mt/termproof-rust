@@ -5,7 +5,7 @@
 //! module.  JUnit is serialized via `quick-junit`, guaranteeing valid XML
 //! and proper escaping of terminal control characters.
 
-use termproof_core::RunResult;
+use crate::RunResult;
 
 // ---------------------------------------------------------------------------
 // Shared helpers (single source for both reporters)
@@ -316,8 +316,8 @@ pub fn validate_recipe_json(value: &serde_json::Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{AssertionResult, RunResult, StepResult};
     use std::collections::BTreeMap;
-    use termproof_core::{AssertionResult, RunResult, StepResult};
 
     fn sample_result(passed: bool) -> RunResult {
         RunResult {

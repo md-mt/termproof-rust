@@ -30,10 +30,10 @@ use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 
-use crate::cast::{ActivityClock, CastRecorder};
-use crate::error::SessionError;
-use crate::screen::TerminalScreen;
-use crate::session::Session;
+use crate::terminal::cast::{ActivityClock, CastRecorder};
+use crate::terminal::error::SessionError;
+use crate::terminal::screen::TerminalScreen;
+use crate::terminal::session::Session;
 
 /// EOT — what a terminal sends for "end of input"; closing a fd is a pipe
 /// concept and means nothing to a tty.
@@ -709,7 +709,7 @@ impl Session for PtySession {
         &self.screen_snapshot
     }
 
-    fn screen_attributed(&mut self) -> Option<crate::attributed::AttributedScreen> {
+    fn screen_attributed(&mut self) -> Option<crate::terminal::attributed::AttributedScreen> {
         // Read live from the screen mutex rather than the snapshot `screen()`
         // hands out: an attributed grid is only useful if it matches now.
         self.screen.lock().ok().map(|s| s.attributed())

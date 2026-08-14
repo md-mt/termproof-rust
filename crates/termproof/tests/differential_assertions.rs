@@ -18,7 +18,7 @@
 //! Run it with output:
 //!
 //! ```sh
-//! cargo test -p termproof-core --test differential_assertions -- --nocapture
+//! cargo test -p termproof --test differential_assertions -- --nocapture
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -28,8 +28,8 @@ use std::time::Duration;
 
 use serde_json::Value as JsonValue;
 
-use termproof_core::assertions;
-use termproof_core::models::{AssertionResult, CommandSpec, Recipe};
+use termproof::assertions;
+use termproof::models::{AssertionResult, CommandSpec, Recipe};
 
 /// The measurement, locked in as a ratchet. Raising the floor is the point of
 /// the harness; lowering it is a regression and needs saying out loud in the
@@ -220,7 +220,7 @@ fn expected_results(expected: &JsonValue) -> Vec<(String, bool, String)> {
 }
 
 fn corpus_path() -> PathBuf {
-    // CARGO_MANIFEST_DIR is crates/termproof-core.
+    // CARGO_MANIFEST_DIR is crates/termproof.
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../harness/corpus/assertions.expected.json")
 }
 

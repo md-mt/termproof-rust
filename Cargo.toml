@@ -11,10 +11,8 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/termproof",
     "crates/termproof-cli",
-    "crates/termproof-core",
-    "crates/termproof-terminal",
-    "crates/termproof-evidence",
     "crates/termproof-plugin-protocol",
 ]
 
@@ -53,9 +51,7 @@ all = "warn"
 # against on the registry. A `path`-only dependency cannot be published at all,
 # and the two must be bumped together — see docs/publishing.md.
 [workspace.dependencies]
-termproof-core = { path = "crates/termproof-core", version = "0.2.1" }
-termproof-terminal = { path = "crates/termproof-terminal", version = "0.2.1" }
-termproof-evidence = { path = "crates/termproof-evidence", version = "0.2.1" }
+termproof = { path = "crates/termproof", version = "0.2.1" }
 regex = { version = "1.13.1", default-features = false, features = ["std", "unicode"] }
 fancy-regex = "0.19.0"
 serde = { version = "1.0", features = ["derive"] }

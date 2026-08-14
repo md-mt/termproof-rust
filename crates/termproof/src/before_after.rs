@@ -14,8 +14,8 @@
 //! omitting it would make a shrinking suite look like a stable one.
 //!
 //! ```
-//! use termproof_core::before_after::build_before_after;
-//! # use termproof_core::result::RunResult;
+//! use termproof::before_after::build_before_after;
+//! # use termproof::result::RunResult;
 //! # use std::collections::BTreeMap;
 //! # fn run(name: &str, passed: bool) -> RunResult {
 //! #     RunResult { recipe_name: name.into(), passed, exit_code: None,

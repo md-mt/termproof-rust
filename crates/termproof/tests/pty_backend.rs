@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use termproof_terminal::{PtySessionBackend, SessionBackend, SessionError};
+use termproof::terminal::{PtySessionBackend, SessionBackend, SessionError};
 
 #[test]
 fn backend_returns_a_spawned_child() {

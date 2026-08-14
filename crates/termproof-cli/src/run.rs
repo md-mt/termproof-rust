@@ -2,8 +2,8 @@
 //!
 //! This used to print a summary of its own arguments and exit 0. Everything
 //! it now does goes through the same public surfaces a plugin would use:
-//! `termproof_core::Runner` for execution, `termproof_core::store` for the
-//! run directory and atomic writes, and `termproof_evidence::report` for the
+//! `termproof::Runner` for execution, `termproof::store` for the
+//! run directory and atomic writes, and `termproof::evidence::report` for the
 //! reporters.
 
 use std::collections::HashMap;
@@ -12,13 +12,13 @@ use std::path::{Path, PathBuf};
 use clap::parser::ValueSource;
 use clap::ArgMatches;
 
-use termproof_core::planner::{plan_items, run_parallel, PlanItem};
-use termproof_core::result::RunResult;
-use termproof_core::runner::{LoadedRecipe, Runner};
-use termproof_core::store;
-use termproof_evidence::report::{
+use termproof::evidence::report::{
     cli_summary, generate_junit, generate_markdown, generate_markdown_single,
 };
+use termproof::planner::{plan_items, run_parallel, PlanItem};
+use termproof::result::RunResult;
+use termproof::runner::{LoadedRecipe, Runner};
+use termproof::store;
 
 use crate::cli::exit_code;
 

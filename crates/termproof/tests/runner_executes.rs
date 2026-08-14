@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use termproof_core::runner::{LoadedRecipe, Runner};
+use termproof::runner::{LoadedRecipe, Runner};
 
 fn write(dir: &Path, name: &str, body: &str) -> PathBuf {
     let path = dir.join(name);

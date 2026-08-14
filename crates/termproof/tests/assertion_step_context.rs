@@ -12,9 +12,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde_json::{json, Value};
-use termproof_core::models::{AssertionResult, CommandSpec, Recipe, StepResult};
-use termproof_core::{ExecutionContext, ExecutionError, ExecutionMode, ScriptedPtyMode};
-use termproof_terminal::{InMemorySession, Session};
+use termproof::models::{AssertionResult, CommandSpec, Recipe, StepResult};
+use termproof::terminal::{InMemorySession, Session};
+use termproof::{ExecutionContext, ExecutionError, ExecutionMode, ScriptedPtyMode};
 
 /// Screens the fake context reports for each step, in order.
 const STEP_SCREENS: &[(&str, &str)] = &[

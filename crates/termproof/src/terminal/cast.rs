@@ -126,7 +126,7 @@ impl Default for ActivityClock {
 ///
 /// Usage:
 /// ```no_run
-/// use termproof_terminal::cast::CastRecorder;
+/// use termproof::terminal::cast::CastRecorder;
 /// use std::path::PathBuf;
 /// let mut rec = CastRecorder::new(PathBuf::from("/tmp/session.cast"), 80, 24, vec!["sh".into(), "-c".into(), "echo hi".into()]).unwrap();
 /// rec.record_output("hi\n");
@@ -257,7 +257,7 @@ pub fn replay_cast(path: &Path) -> Result<(String, u16, u16), Box<dyn std::error
     let mut header_line = String::new();
     reader.read_line(&mut header_line)?;
     let header: CastHeader = serde_json::from_str(&header_line)?;
-    let mut screen = crate::screen::TerminalScreen::new(header.width, header.height);
+    let mut screen = crate::terminal::screen::TerminalScreen::new(header.width, header.height);
     for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {

@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-use termproof_core::steps;
-use termproof_terminal::InMemorySession;
+use termproof::steps;
+use termproof::terminal::InMemorySession;
 
 /// Anything past this is not waiting, it is stuck. Every case here either
 /// returns immediately or is a bug.

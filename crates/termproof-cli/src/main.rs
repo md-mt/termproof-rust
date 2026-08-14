@@ -38,7 +38,7 @@ fn run() -> i32 {
         _ => {
             // No subcommand: preserve RUST-002 baseline greeting on stdout so
             // the existing integration test can migrate, then hint help.
-            println!("{}", termproof_core::banner());
+            println!("{}", termproof::banner());
             eprintln!("Run `termproof --help` for usage.");
             cli::exit_code::USAGE
         }

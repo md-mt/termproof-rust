@@ -145,7 +145,7 @@ pub fn write_result_files(
 }
 
 /// Write `latest-report.md` (or `.xml`) at `out_dir` atomically, combining
-/// all results.  Kept minimal here; full aggregate is in `termproof-evidence`.
+/// all results.  Kept minimal here; full aggregate is in [`crate::evidence`].
 pub fn write_latest_report(out_dir: &Path, report: &str, extension: &str) -> std::io::Result<()> {
     std::fs::create_dir_all(out_dir)?;
     let path = out_dir.join(format!("latest-report{extension}"));

@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::backend::SessionBackend;
-use crate::error::SessionError;
-use crate::session::Session;
+use crate::terminal::backend::SessionBackend;
+use crate::terminal::error::SessionError;
+use crate::terminal::session::Session;
 
 /// A `SessionBackend` that delegates to a plugin subprocess via protocol v1.
 ///
@@ -55,7 +55,8 @@ impl SessionBackend for PluginSessionBackend {
         // delegation. A real implementation would use `termproof_plugin_protocol::PluginClient`
         // to spawn and call `create_session` via NDJSON.
         let _ = &self.argv;
-        let session = crate::inmemory::InMemorySession::new(argv.clone(), cast_path, cols, rows);
+        let session =
+            crate::terminal::inmemory::InMemorySession::new(argv.clone(), cast_path, cols, rows);
         // Annotate that this was via plugin.
         let mut s = session;
         s.feed(&format!(

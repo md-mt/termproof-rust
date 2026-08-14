@@ -16,8 +16,8 @@
 //! such path in a changeset suppresses every other match in it.
 //!
 //! ```
-//! use termproof_core::selection::{select, SelectionConfig};
-//! # use termproof_core::recipe::Recipe;
+//! use termproof::selection::{select, SelectionConfig};
+//! # use termproof::recipe::Recipe;
 //! # fn recipe(name: &str, paths: &[&str]) -> Recipe {
 //! #     serde_json::from_value(serde_json::json!({
 //! #         "name": name, "ci_paths": paths, "steps": [],

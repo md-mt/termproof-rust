@@ -1,14 +1,14 @@
 //! Video from a cast, rendered by the same code as the screenshots.
 //!
-//! [`AggFfmpegBackend`](crate::video::AggFfmpegBackend) shells out to `agg`,
+//! [`AggFfmpegBackend`](crate::evidence::video::AggFfmpegBackend) shells out to `agg`,
 //! which has its own fonts and its own colour handling. That works, but it
 //! means a still and a frame of the same screen come from two unrelated
 //! renderers and do not look alike.
 //!
 //! This backend replays the cast through the terminal emulator, samples the
 //! grid at a fixed frame rate, and renders each frame with
-//! [`screen_svg`](termproof_terminal::attributed::screen_svg) — the same
-//! function behind [`crate::screenshot`]. The video is literally the
+//! [`screen_svg`](crate::terminal::attributed::screen_svg) — the same
+//! function behind [`crate::evidence::screenshot`]. The video is literally the
 //! screenshots in sequence, and there is one visual language across all
 //! evidence.
 //!
@@ -29,20 +29,20 @@ use std::time::Duration;
 
 use avt::Vt;
 
-use termproof_terminal::attributed::palette_color;
-use termproof_terminal::attributed::rgb_color;
-use termproof_terminal::attributed::screen_svg;
-use termproof_terminal::attributed::AttributedCell;
-use termproof_terminal::attributed::AttributedScreen;
-use termproof_terminal::attributed::SvgMetrics;
-use termproof_terminal::attributed::DEFAULT_CELL_H;
-use termproof_terminal::attributed::DEFAULT_CELL_W;
-use termproof_terminal::attributed::DEFAULT_COLUMNS;
-use termproof_terminal::attributed::DEFAULT_FONT_PX;
-use termproof_terminal::attributed::DEFAULT_PADDING;
-use termproof_terminal::attributed::DEFAULT_ROWS;
-use termproof_terminal::proc::combined_output;
-use termproof_terminal::proc::run_with_timeout;
+use crate::terminal::attributed::palette_color;
+use crate::terminal::attributed::rgb_color;
+use crate::terminal::attributed::screen_svg;
+use crate::terminal::attributed::AttributedCell;
+use crate::terminal::attributed::AttributedScreen;
+use crate::terminal::attributed::SvgMetrics;
+use crate::terminal::attributed::DEFAULT_CELL_H;
+use crate::terminal::attributed::DEFAULT_CELL_W;
+use crate::terminal::attributed::DEFAULT_COLUMNS;
+use crate::terminal::attributed::DEFAULT_FONT_PX;
+use crate::terminal::attributed::DEFAULT_PADDING;
+use crate::terminal::attributed::DEFAULT_ROWS;
+use crate::terminal::proc::combined_output;
+use crate::terminal::proc::run_with_timeout;
 
 const RSVG_CONVERT: &str = "/usr/bin/rsvg-convert";
 const FFMPEG: &str = "/usr/local/bin/ffmpeg";
@@ -292,9 +292,9 @@ impl CastVideoConverter {
 
 /// Build an attributed screen from an `avt` grid.
 ///
-/// Lives here rather than in `termproof-terminal` so that crate stays
+/// Lives here rather than in [`crate::terminal`] so that module stays
 /// `vt100`-only: cast playback is the one place `avt` earns its keep, and a
-/// second emulator in the terminal crate would be a cost every consumer pays.
+/// second emulator in the terminal layer would be a cost every consumer pays.
 fn attributed_screen_from_avt(vt: &Vt) -> AttributedScreen {
     let rows = vt
         .view()

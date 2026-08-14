@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::error::SessionError;
-use crate::session::Session;
+use crate::terminal::error::SessionError;
+use crate::terminal::session::Session;
 
 /// Minimal in-memory session that records interactions.
 ///

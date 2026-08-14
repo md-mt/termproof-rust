@@ -7,13 +7,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::backend::SessionBackend;
-use crate::error::SessionError;
-use crate::session::Session;
+use crate::terminal::backend::SessionBackend;
+use crate::terminal::error::SessionError;
+use crate::terminal::session::Session;
 
 /// Configuration for the Docker session backend.
 ///
-/// Mirrors `DockerBackendConfig` in `termproof-core` / Python `config.py`.
+/// Mirrors `DockerBackendConfig` in [`crate::config`] / Python `config.py`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DockerBackendConfig {
     /// Docker image (required).
