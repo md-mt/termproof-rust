@@ -258,6 +258,21 @@ mod tests {
     }
 
     #[test]
+    fn no_control_characters_reach_the_svg() {
+        // The failure the module doc describes: one control character and
+        // `rsvg-convert` rejects the document, which arrives as a zero-byte
+        // PNG rather than as an error. The screen text a caller passes when it
+        // has no attributed grid is the way one gets in.
+        let (renderer, svg) = capturing_renderer();
+        render_to_svg(&renderer, "ok \x1b[31mred\x1b[0m\x07 done", None);
+        let svg = svg.lock().unwrap().clone();
+        assert!(
+            !svg.chars().any(char::is_control),
+            "control character reached the SVG"
+        );
+    }
+
+    #[test]
     fn canvas_is_derived_from_the_grid() {
         let renderer = ScreenshotRenderer::new();
         assert_eq!(renderer.width(), 120 * 10 + 20);

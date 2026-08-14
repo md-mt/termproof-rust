@@ -597,10 +597,11 @@ pub fn screen_svg(screen: &AttributedScreen, metrics: &SvgMetrics) -> String {
                     bg,
                 ));
             }
-            if cell.text == " " {
+            let text = printable(&cell.text);
+            if text == " " || text.is_empty() {
                 continue;
             }
-            glyphs.push_str(&glyph_svg(cell, x, y + baseline, &fg));
+            glyphs.push_str(&glyph_svg(cell, &text, x, y + baseline, &fg));
         }
     }
 
@@ -617,7 +618,7 @@ xml:space=\"preserve\">{glyphs}</g></svg>",
     )
 }
 
-fn glyph_svg(cell: &AttributedCell, x: f64, y: f64, fg: &str) -> String {
+fn glyph_svg(cell: &AttributedCell, text: &str, x: f64, y: f64, fg: &str) -> String {
     let mut attrs = format!("x=\"{:.1}\" y=\"{:.1}\" fill=\"{}\"", x, y, fg);
     if cell.bold {
         attrs.push_str(" font-weight=\"700\"");
@@ -638,7 +639,23 @@ fn glyph_svg(cell: &AttributedCell, x: f64, y: f64, fg: &str) -> String {
     if cell.dim {
         attrs.push_str(" opacity=\"0.65\"");
     }
-    format!("<text {}>{}</text>", attrs, xml_escape(&cell.text))
+    format!("<text {}>{}</text>", attrs, xml_escape(text))
+}
+
+/// Cell text with everything an XML document cannot carry removed.
+///
+/// A control character is not a valid XML character at all, and one of them
+/// makes `rsvg-convert` reject the whole file — which surfaces as a zero-byte
+/// PNG rather than as an error, so a run produces a directory of empty
+/// screenshots and says nothing about it.
+///
+/// A cell should never hold one: `vt100` consumes control bytes rather than
+/// storing them. But [`attributed_screen_from_text`] builds a grid straight
+/// from a string, escapes and all, and a caller emulating with something other
+/// than `vt100` builds [`AttributedCell`]s by hand. The guarantee is therefore
+/// enforced here, at the document boundary, where nothing can route around it.
+fn printable(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
 }
 
 // -- Internals ---------------------------------------------------------------
@@ -1015,6 +1032,24 @@ mod tests {
     fn escapes_xml_specials() {
         assert_eq!(xml_escape("a<b>&c"), "a&lt;b&gt;&amp;c");
         assert!(svg("a<b").contains("&lt;"));
+    }
+
+    #[test]
+    fn control_characters_never_reach_the_document() {
+        // One of these makes `rsvg-convert` reject the file, and a rejected
+        // file surfaces as a zero-byte PNG rather than as an error. The
+        // plain-text constructor takes its characters verbatim, so an
+        // unparsed escape in the text a caller hands over lands in a cell.
+        let screen = attributed_screen_from_text("a\x1b[31mb\x07c", 10, 3);
+        let out = screen_svg(&screen, &SvgMetrics::default());
+        assert!(
+            !out.chars().any(char::is_control),
+            "control character survived into the SVG"
+        );
+        // The printable characters around it are still drawn.
+        for glyph in ["a", "b", "c", "3", "1", "m"] {
+            assert!(out.contains(&format!(">{glyph}</text>")), "{glyph} missing");
+        }
     }
 
     #[test]
