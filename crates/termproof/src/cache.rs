@@ -146,7 +146,11 @@ pub fn load_cached(
         return None;
     }
     let result_value = value.get("result")?;
-    let mut result: RunResult = serde_json::from_value(result_value.clone()).ok()?;
+    // A cached payload this build cannot read is a miss, not a failure: the
+    // recipe is simply re-run and the entry replaced. Refusing outright would
+    // turn a stale cache directory — left behind by an older or newer binary —
+    // into a broken build, which is a worse outcome than a slow one.
+    let mut result: RunResult = RunResult::from_json_value(result_value).ok()?;
     if !result.passed {
         return None;
     }
@@ -199,4 +203,55 @@ pub fn key_from_bytes(
     let payload = serde_json::to_value(extra).unwrap();
     hasher.update(serde_json::to_string(&payload).unwrap().as_bytes());
     hex::encode(hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::result::RESULT_SCHEMA_VERSION;
+
+    fn write_entry(cache_dir: &Path, result: serde_json::Value) {
+        let path = cache_path(cache_dir, "login", "default");
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        let payload = serde_json::json!({ "key": "k", "result": result });
+        std::fs::write(&path, serde_json::to_string(&payload).expect("json")).expect("write");
+    }
+
+    fn cached_result(result_version: Option<u32>) -> serde_json::Value {
+        let mut value = serde_json::json!({
+            "recipe_name": "login", "passed": true, "exit_code": 0,
+            "duration_seconds": 1.0, "priority": "P0", "execution": "scripted",
+            "renderer": "default", "score": 1.0,
+            "steps": [], "assertions": [], "artifacts": {}
+        });
+        if let Some(v) = result_version {
+            value["result_version"] = serde_json::json!(v);
+        }
+        value
+    }
+
+    #[test]
+    fn an_entry_this_build_wrote_is_a_hit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_entry(dir.path(), cached_result(Some(RESULT_SCHEMA_VERSION)));
+        let hit = load_cached(dir.path(), "login", "default", "k").expect("hit");
+        assert_eq!(hit.result_version, Some(RESULT_SCHEMA_VERSION));
+    }
+
+    #[test]
+    fn an_entry_written_before_the_version_field_is_still_a_hit() {
+        // Additive means additive: a cache directory left by the previous
+        // release must not go cold.
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_entry(dir.path(), cached_result(None));
+        let hit = load_cached(dir.path(), "login", "default", "k").expect("hit");
+        assert_eq!(hit.result_version, None);
+    }
+
+    #[test]
+    fn an_entry_from_an_unreadable_version_is_a_miss_not_a_failure() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_entry(dir.path(), cached_result(Some(RESULT_SCHEMA_VERSION + 1)));
+        assert!(load_cached(dir.path(), "login", "default", "k").is_none());
+    }
 }

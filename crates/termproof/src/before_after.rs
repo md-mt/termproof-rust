@@ -18,7 +18,7 @@
 //! # use termproof::result::RunResult;
 //! # use std::collections::BTreeMap;
 //! # fn run(name: &str, passed: bool) -> RunResult {
-//! #     RunResult { recipe_name: name.into(), passed, exit_code: None,
+//! #     RunResult { result_version: Some(1), recipe_name: name.into(), passed, exit_code: None,
 //! #         duration_seconds: 0.0, priority: "P0".into(), execution: "scripted".into(),
 //! #         renderer: "default".into(), score: 0.0, steps: vec![], assertions: vec![],
 //! #         artifacts: BTreeMap::new() }
@@ -158,6 +158,7 @@ mod tests {
 
     fn run(name: &str, renderer: &str, passed: bool) -> RunResult {
         RunResult {
+            result_version: Some(crate::result::RESULT_SCHEMA_VERSION),
             recipe_name: name.to_string(),
             passed,
             exit_code: None,

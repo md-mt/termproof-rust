@@ -159,6 +159,7 @@ impl Runner {
         // 003-FR-023: a run passes only when every step and every assertion did.
         let passed = steps.iter().all(|s| s.passed) && assertions.iter().all(|a| a.passed);
         Ok(RunResult {
+            result_version: Some(crate::result::RESULT_SCHEMA_VERSION),
             recipe_name: recipe.name.clone(),
             passed,
             exit_code,

@@ -39,7 +39,7 @@
 //! # use termproof::result::RunResult;
 //! # use std::collections::BTreeMap;
 //! # fn run(name: &str, passed: bool) -> RunResult {
-//! #     RunResult { recipe_name: name.into(), passed, exit_code: None,
+//! #     RunResult { result_version: Some(1), recipe_name: name.into(), passed, exit_code: None,
 //! #         duration_seconds: 0.0, priority: "P0".into(), execution: "scripted".into(),
 //! #         renderer: "default".into(), score: if passed { 1.0 } else { 0.0 },
 //! #         steps: vec![], assertions: vec![], artifacts: BTreeMap::new() }
@@ -189,6 +189,14 @@ pub fn summarize(results: &[RunResult]) -> RunSummary {
 /// missing reads as absent rather than as a parse failure — an entry with no
 /// recognisable `recipe_name` is skipped, and a run with no recognisable
 /// entries yields an empty summary, which [`compare`] then rejects loudly.
+///
+/// It does **not** gate on [`crate::result::RESULT_SCHEMA_VERSION`], on purpose.
+/// Every field it reads — `recipe_name`, `renderer`, `passed`, `score`,
+/// `assertions` — is present in version 1 and is what a foreign writer emits
+/// anyway, so a version check here would buy nothing and cost the exact failure
+/// the version scheme exists to avoid: a comparison refusing to run because the
+/// other side is not this build. Readers that need the whole typed payload go
+/// through [`crate::result::RunResult::from_json_value`], which does check.
 pub fn summarize_json(payload: &serde_json::Value) -> RunSummary {
     let mut recipes = BTreeMap::new();
     let Some(results) = payload.get("results").and_then(|r| r.as_array()) else {
@@ -473,6 +481,7 @@ mod tests {
 
     fn run(name: &str, passed: bool, score: f64, assertions: Vec<AssertionResult>) -> RunResult {
         RunResult {
+            result_version: Some(crate::result::RESULT_SCHEMA_VERSION),
             recipe_name: name.to_string(),
             passed,
             exit_code: None,

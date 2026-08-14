@@ -321,6 +321,7 @@ mod tests {
 
     fn sample_result(passed: bool) -> RunResult {
         RunResult {
+            result_version: Some(crate::result::RESULT_SCHEMA_VERSION),
             recipe_name: "demo".into(),
             passed,
             exit_code: Some(0),
