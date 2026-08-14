@@ -32,15 +32,22 @@
 //!
 //! # Features
 //!
-//! Both are on by default, so a consumer that does not name features gets the
-//! whole crate — the shape that has always been published.
+//! All three are on by default, so a consumer that does not name features gets
+//! the whole crate — the shape that has always been published.
 //!
 //! - **`evidence`** — the [`evidence`] module. Off, the crate does not compile
 //!   `image`, `quick-junit` or `avt`.
 //! - **`json-schema`** — [`validation`], [`pyschema`] and the `json_schema`
 //!   built-in assertion. Off, the crate does not compile `jsonschema`, and
 //!   `json_schema` is absent from [`assertions::BUILTIN_TYPES`] rather than
-//!   present and failing. Schema *generation* ([`schema`]) is unconditional.
+//!   present and failing. Implies `schema`, which is where the schema it
+//!   validates against comes from.
+//! - **`schema`** — the [`schema`] module and the `JsonSchema` impls derived on
+//!   [`Recipe`], [`config::VerifierConfig`] and the types they contain. Off,
+//!   the crate does not compile `schemars`. This is the one dependency that
+//!   reaches the public API, so it is the one a consumer cannot deduplicate by
+//!   pinning; turning it off is how a consumer on a different `schemars` major
+//!   stops carrying two.
 //!
 //! [`terminal`] has no feature of its own: the crate root is built on it, and
 //! every build drives a terminal, so there is nothing to save.
@@ -69,6 +76,7 @@ pub mod recipe;
 pub mod result;
 pub mod run_config;
 pub mod runner;
+#[cfg(feature = "schema")]
 pub mod schema;
 pub mod selection;
 pub mod steps;
@@ -84,7 +92,8 @@ pub use recipe::{Assertion, CommandSpec as RecipeCommandSpec, Recipe, Step, RECI
 pub use validation::{has_errors, Severity, ValidationIssue};
 
 // Re-exports: models/result/store (RUST-010) — models is legacy, result is canonical
-// Canonical Recipe is from recipe.rs (serde+schemars); models::Recipe retained as ModelRecipe for back-compat
+// Canonical Recipe is from recipe.rs (serde, plus schemars under `schema`);
+// models::Recipe retained as ModelRecipe for back-compat
 pub use models::Recipe as ModelRecipe;
 pub use models::{
     AssertionResult as ModelAssertionResult, CommandSpec as ModelCommandSpec,

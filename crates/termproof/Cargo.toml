@@ -36,8 +36,10 @@ all-features = true
 workspace = true
 
 # Feature names carry a one-line description and the issue that justifies them
-# (docs/engineering-baseline.md §7). Both features here are from #27: every
-# consumer used to compile all 18 dependencies whether or not it used them.
+# (docs/engineering-baseline.md §7). All three are default-on, so no consumer
+# sees a change by not asking for one. `evidence` and `json-schema` are from
+# #27: every consumer used to compile all 18 dependencies whether or not it
+# used them. `schema` is from #28.
 #
 # There is deliberately no `terminal`/`core` split. `terminal` is the base layer
 # the crate root is built on — `recipe`, `steps`, `runner`, `execution` and
@@ -46,16 +48,34 @@ workspace = true
 # `portable-pty` and `vt100` are needed by any build that drives a terminal,
 # which is every build.
 [features]
-default = ["evidence", "json-schema"]
+default = ["evidence", "json-schema", "schema"]
 
 # The evidence pipeline: stills, video, Markdown/JUnit reports, baselines,
 # visual diff and upload. Gates the whole `evidence` module (#27).
 evidence = ["dep:image", "dep:quick-junit", "dep:avt"]
 
 # JSON Schema *validation*: recipe validation and the `json_schema` built-in
-# assertion. Schema *generation* (`schema`, via `schemars`) stays unconditional
-# — it costs four crates against this feature's 87 (#27).
-json-schema = ["dep:jsonschema"]
+# assertion. Implies `schema`, because validating a recipe means validating it
+# against the schema `schema` generates — there is no other source for it (#27).
+json-schema = ["dep:jsonschema", "schema"]
+
+# JSON Schema *generation*: the `schema` module, and the derived `JsonSchema`
+# impls on `Recipe`, `Config` and the types they contain.
+#
+# #27 left this unconditional and said why: four crates against `json-schema`'s
+# 87. That arithmetic is still right and is not why this feature exists. It
+# exists because `schemars` is the one dependency that reaches this crate's
+# public API — the derives put `JsonSchema` on published types — so a consumer
+# on `schemars` 1.x cannot deduplicate by pinning the way it can for every other
+# entry in the workspace manifest. It has to carry both majors. Off, this crate
+# does not name `schemars` at all and that second copy is simply gone, which is
+# an answer we can give without a breaking change to the types (#28).
+#
+# The cost is real and was correctly called invasive when it was a side quest:
+# seven `cfg_attr` derives and fifteen `cfg_attr` helper attributes in
+# `recipe.rs` and `config.rs`, because `#[schemars(...)]` is an inert attribute
+# the derive registers and will not compile without it.
+schema = ["dep:schemars"]
 
 # The union of what termproof-core, termproof-terminal and termproof-evidence
 # each declared, minus `ab_glyph`, which no code ever referenced (#27).
@@ -71,7 +91,7 @@ jsonschema = { workspace = true, optional = true }
 portable-pty.workspace = true
 quick-junit = { workspace = true, optional = true }
 regex.workspace = true
-schemars.workspace = true
+schemars = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

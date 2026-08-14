@@ -28,24 +28,32 @@ the only one that has ever existed on crates.io.
 
 ## Features
 
-Both are on by default, so `termproof = "0.3"` is the whole crate — the shape
-that has always been published.
+All three are on by default, so `termproof = "0.3"` is the whole crate — the
+shape that has always been published.
 
 | Feature | Enables | Costs |
 |---|---|---|
 | `evidence` | the `evidence` module | `image`, `quick-junit`, `avt` |
-| `json-schema` | `validation`, `pyschema`, and the `json_schema` built-in assertion | `jsonschema` |
+| `json-schema` | `validation`, `pyschema`, and the `json_schema` built-in assertion. Implies `schema` | `jsonschema` |
+| `schema` | the `schema` module, and `JsonSchema` on `Recipe`, `VerifierConfig` and the types they contain | `schemars` |
 
-Turning both off takes the crate from 180 transitive dependencies to 72:
+Turning all three off takes the crate from 180 transitive dependencies to 66:
 
 ```toml
 termproof = { version = "0.3", default-features = false }
 ```
 
 That build still has the whole session layer and the other seven built-in
-assertions; what it loses is the evidence pipeline and JSON Schema validation.
-Schema *generation* (`schema`, via `schemars`) is unconditional — it is four
-crates, against `jsonschema`'s 87.
+assertions; what it loses is the evidence pipeline, JSON Schema validation and
+schema generation.
+
+`schema` is the small one — six crates, against `json-schema`'s 87 — and it is
+not off by default and not off for size. It exists because `schemars` is the
+only dependency that reaches this crate's *public API*: the derives put
+`JsonSchema` on published types, so a consumer already on a different `schemars`
+major cannot deduplicate by pinning the way it can for everything else here, and
+has to carry both. Turning `schema` off means this crate does not name
+`schemars` at all, and that second copy is gone.
 
 There is no `terminal` feature. The crate root is built on `terminal` and
 nothing in `terminal` depends on the root, so a build without it would not be

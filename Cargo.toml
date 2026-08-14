@@ -71,11 +71,38 @@ fancy-regex = ">=0.16, <0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-# Still 0.8, and not because 1.x does not build — it does, on one import
-# rename. It is held because `JsonSchema` is derived on `Recipe` and friends, so
-# the trait is part of this crate's public API and its major is a break for any
-# consumer that names those types. Releases here bump the patch digit only, so
-# that is a decision, not a chore; see #28.
+# Held at 0.8, decided in #28. Not for lack of trying: 1.2.1 builds on a single
+# import rename, needs no edit at any derive site, passes the whole suite, and
+# even improves assertion parity 124/147 -> 126/147. It is held anyway, for two
+# reasons, of which the second is the stronger.
+#
+# 1. `JsonSchema` is derived on `Recipe`, `CommandSpec`, `Step`, `Assertion` and
+#    the config types, so the trait is part of this crate's published surface
+#    and its major is a break for any consumer that names them. Releases here
+#    bump the patch digit only.
+#
+# 2. `preserve_order` does not mean the same thing across the majors, and the
+#    difference is graph-global. In 0.8 it is `["indexmap"]`, scoped to
+#    schemars' own maps. In 1.x it is `["serde_json/preserve_order"]`, which
+#    switches `serde_json::Map` to insertion order for *every* crate in the
+#    consumer's build. Imposing that on unrelated crates is not ours to do on a
+#    consumer's behalf. It is also where both parity wins come from — Python
+#    dicts preserve insertion order too — which makes them a symptom of the
+#    side effect rather than a benefit of the upgrade.
+#
+# The bump also silently redraws the generated recipe schema: `definitions`
+# becomes `$defs` with every `$ref` retargeted, `"minimum": 0.0` becomes
+# `"minimum": 0`, and key order and the `required` array go from sorted to
+# declaration order. The three tests in `schema.rs` catch none of it — they
+# check `$schema`, two `required` entries and one const. A change of that shape
+# passing green is the argument for a real drift test; the canonical schema
+# lives in the Python tree and is deliberately not vendored here, so building
+# one is parity-gate work and is not done.
+#
+# What #28 shipped instead is the `schema` feature on the `termproof` crate: a
+# consumer that does not need generation stops compiling `schemars` at all,
+# which answers "every consumer with a modern schemars carries two" without
+# breaking anyone's types.
 schemars = { version = "0.8", features = ["preserve_order"] }
 # Floor 0.32, tested at 0.32.0. 0.31 is the first version that will not build:
 # `ValidationErrorKind::OneOfMultipleValid` has no `context` field there, and

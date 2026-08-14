@@ -27,6 +27,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+#[cfg(feature = "schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -85,14 +86,15 @@ fn default_renderers() -> HashMap<String, Vec<String>> {
 }
 
 /// Command specification for a recipe.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct CommandSpec {
     /// Target command and arguments; at least one entry required.
     pub argv: Vec<String>,
 
     /// Working directory for the command; `None` means inherited.
     #[serde(default)]
-    #[schemars(with = "Option<String>")]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<String>"))]
     pub cwd: Option<String>,
 
     /// Environment variables for the command.
@@ -105,34 +107,36 @@ pub struct CommandSpec {
 
     /// Extension fields not covered by the typed schema (`additionalProperties: true`).
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extension: HashMap<String, serde_json::Value>,
 }
 
 /// A single step in a recipe.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct Step {
     /// Action name, e.g. `wait_for_text`, `send_line`.
     pub action: String,
 
     /// Optional human-readable step name.
     #[serde(default)]
-    #[schemars(with = "Option<String>")]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<String>"))]
     pub name: Option<String>,
 
     /// Per-step timeout in seconds, if overridden.
     #[serde(default)]
-    #[schemars(with = "Option<f64>")]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<f64>"))]
     pub timeout_seconds: Option<f64>,
 
     /// Any additional step fields (e.g. `text`, `key`, `pattern`).
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extra: HashMap<String, serde_json::Value>,
 }
 
 /// A single assertion in a recipe.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct Assertion {
     /// Assertion type, e.g. `output_contains`.
     #[serde(rename = "type")]
@@ -140,21 +144,22 @@ pub struct Assertion {
 
     /// Optional human-readable assertion name.
     #[serde(default)]
-    #[schemars(with = "Option<String>")]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<String>"))]
     pub name: Option<String>,
 
     /// Any additional assertion fields (e.g. `value`, `path`, `schema`).
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extra: HashMap<String, serde_json::Value>,
 }
 
 /// Typed recipe model.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct Recipe {
     /// Recipe format version; defaults to `1` for legacy recipes.
     #[serde(default = "default_recipe_version")]
-    #[schemars(range(min = 1, max = 1))]
+    #[cfg_attr(feature = "schema", schemars(range(min = 1, max = 1)))]
     pub recipe_version: u32,
 
     /// Human-readable recipe identifier.
@@ -209,7 +214,7 @@ pub struct Recipe {
 
     /// Expected exit code; `None` means no expectation.
     #[serde(default = "default_expect_exit_code")]
-    #[schemars(with = "Option<i32>")]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<i32>"))]
     pub expect_exit_code: Option<i32>,
 
     /// Overall recipe timeout in seconds.
@@ -226,12 +231,12 @@ pub struct Recipe {
 
     /// Source path for diagnostics; not serialized.
     #[serde(skip, default)]
-    #[schemars(skip)]
+    #[cfg_attr(feature = "schema", schemars(skip))]
     pub source_path: Option<String>,
 
     /// Extension fields not covered by the typed schema.
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extension: HashMap<String, serde_json::Value>,
 }
 

@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,8 @@ pub const LEGACY_PROJECT_CONFIG_DIR: &str = ".tui-verifier";
 pub const CURRENT_PROJECT_CONFIG_DIR: &str = ".termproof";
 
 /// Docker backend settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct DockerBackendConfig {
     /// Container image name (empty means host-native / no Docker).
     #[serde(default)]
@@ -45,7 +47,7 @@ pub struct DockerBackendConfig {
 
     /// Preserve any extra Docker fields.
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extension: HashMap<String, serde_json::Value>,
 }
 
@@ -70,7 +72,8 @@ impl Default for DockerBackendConfig {
 }
 
 /// Global defaults (post-script idle wait cap).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct GlobalDefaults {
     /// Cap for the post-script idle wait in PTY mode; `None` means wait up to
     /// the recipe timeout for quiescence.
@@ -79,12 +82,12 @@ pub struct GlobalDefaults {
         deserialize_with = "deserialize_idle_cap",
         serialize_with = "serialize_idle_cap"
     )]
-    #[schemars(with = "Option<f64>")]
+    #[cfg_attr(feature = "schema", schemars(with = "Option<f64>"))]
     pub idle_cap_seconds: Option<f64>,
 
     /// Preserve unknown defaults keys.
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extension: HashMap<String, serde_json::Value>,
 }
 
@@ -137,7 +140,8 @@ impl Default for GlobalDefaults {
 }
 
 /// Typed verifier configuration.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(JsonSchema))]
 pub struct VerifierConfig {
     /// Step plugin map: action name → `module:Class`.
     #[serde(default = "default_steps")]
@@ -181,7 +185,7 @@ pub struct VerifierConfig {
 
     /// Extension map for unknown top-level keys.
     #[serde(default, flatten)]
-    #[schemars(flatten)]
+    #[cfg_attr(feature = "schema", schemars(flatten))]
     pub extension: HashMap<String, serde_json::Value>,
 }
 

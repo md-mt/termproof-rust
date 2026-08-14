@@ -117,16 +117,29 @@ and this document is updated.
   description and the issue that justifies them.
 - No feature silently changes CLI defaults or result semantics; behavior
   changes land behind explicit flags or features with tests.
-- `termproof` has two, both default-on, both from #27: `evidence` (the
-  `evidence` module — `image`, `quick-junit`, `avt`) and `json-schema`
-  (`validation`, `pyschema` and the `json_schema` built-in assertion —
-  `jsonschema`). Default is the whole crate; `default-features = false` is 72
-  transitive dependencies against 180.
-- Gates go at module boundaries. `assertions` is the one exception and is
-  contained: one `#[cfg]` match arm in `dispatch`, and one contiguous block of
-  five private functions that serve `json_schema` and nothing else.
+- `termproof` has three, all default-on. From #27: `evidence` (the `evidence`
+  module — `image`, `quick-junit`, `avt`) and `json-schema` (`validation`,
+  `pyschema` and the `json_schema` built-in assertion — `jsonschema`). From
+  #28: `schema` (the `schema` module and the derived `JsonSchema` impls —
+  `schemars`), which `json-schema` implies, since validating a recipe means
+  validating it against the schema `schema` generates. Default is the whole
+  crate; `default-features = false` is 66 transitive dependencies against 180.
+- A feature may exist for reasons other than compile cost. `schema` is six
+  crates and would not earn a gate on size; it has one because `schemars` is
+  the only dependency that reaches the public API, so it is the only one a
+  consumer cannot deduplicate by pinning. Turning the feature off is the
+  non-breaking answer to a consumer on a different `schemars` major (#28).
+- Gates go at module boundaries. Two exceptions, both contained: `assertions`
+  has one `#[cfg]` match arm in `dispatch` plus one contiguous block of five
+  private functions serving `json_schema` and nothing else; `schema` reaches
+  into `recipe.rs` and `config.rs` as seven `cfg_attr` derives and fifteen
+  `cfg_attr` helper attributes, which is unavoidable because `#[schemars(...)]`
+  is an inert attribute registered by the derive and will not compile without
+  it. A derive that lands on public types cannot be gated at a module boundary.
 - Every combination is built and tested, not just `default` and
-  `--all-features`. With two features that is the full powerset of four.
+  `--all-features`. With three features that is the full powerset of eight —
+  including the two that resolve to the same set, because what is checked is
+  that every combination a consumer can *write* compiles.
 - A feature must not be able to compile a differential harness out. Parity
   evidence is the reason the harnesses exist, and a combination that drops it
   still reports green. Where a feature genuinely removes the capability a case
