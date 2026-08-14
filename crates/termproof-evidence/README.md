@@ -1,7 +1,7 @@
 # termproof-evidence
 
-Screenshot rendering, Markdown and JUnit reports, video, visual baselines and
-diff — the evidence pipeline of
+Screenshot and video rendering, Markdown and JUnit reports, visual baselines,
+diff and upload — the evidence pipeline of
 [TermProof](https://github.com/md-mt/termproof-rust).
 
 > **Maturity: this port is in progress and is not at parity with the Python
@@ -21,6 +21,17 @@ diff — the evidence pipeline of
   refresh the baseline.
 - `render_mp4` — video via external `agg` and `ffmpeg` binaries, resolved at
   run time and failing with a named diagnostic when absent.
+
+### Library surface no TermProof command uses yet
+
+These are tested APIs with no caller in the CLI. Useful if you are building on
+the library; not evidence that a `termproof run` does any of it.
+
+- `screenshot` and `cast_video` — stills and video frames rendered through one
+  renderer rather than two unrelated ones.
+- `dedup` — skips re-rendering a screen identical to the step before it.
+- `uploader` — a publishing seam with a fallback chain that records which store
+  it fell back from.
 
 ## Known gaps
 

@@ -1,6 +1,6 @@
 [package]
 name = "termproof-terminal"
-description = "Pseudo-terminal and process sessions, vt100 screen state and asciicast recording for TermProof"
+description = "Pseudo-terminal, tmux and process sessions, plain and attributed screen state, and asciicast recording for TermProof"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

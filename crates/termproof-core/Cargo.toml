@@ -1,6 +1,6 @@
 [package]
 name = "termproof-core"
-description = "Recipe model, schema, validation, planning, steps, assertions and run orchestration for TermProof"
+description = "Recipe model, schema, validation, planning, steps, assertions, selection and run orchestration for TermProof"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

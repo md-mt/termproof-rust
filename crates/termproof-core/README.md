@@ -25,6 +25,19 @@ orchestration — the core of
 - `pyregex` / `pyrepr` / `pypath` / `pyschema` — the compatibility shims that
   keep this port's behaviour close to the Python oracle's.
 
+### Library surface no TermProof command uses yet
+
+These are tested APIs with no caller in the CLI. Useful if you are building on
+the library; not evidence that a `termproof run` does any of it.
+
+- `parity` — compares two runs and reports where they disagree.
+- `before_after` — reports which outcomes flipped between two runs.
+- `selection` — maps a changeset onto the recipes it affects, via `ci_paths`.
+- `run_config` — a whole run described by one file.
+- `vocabulary` — a configurable failure detector.
+- `build_info` — provenance for the binary under test, so a result can be
+  traced back to an exact artifact.
+
 ## Measured agreement, not parity
 
 The step and assertion layers are measured against corpora recorded from the

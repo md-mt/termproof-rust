@@ -1,7 +1,7 @@
 # termproof-terminal
 
-Pseudo-terminal and process sessions, vt100 screen state and asciicast
-recording — the terminal layer of
+Pseudo-terminal, tmux and process sessions, plain and attributed screen state,
+and asciicast recording — the terminal layer of
 [TermProof](https://github.com/md-mt/termproof-rust).
 
 > **Maturity: this port is in progress and is not at parity with the Python
@@ -22,6 +22,20 @@ recording — the terminal layer of
 - `wait_for_idle` / `IdleTracker` — output-quiescence detection.
 - `SessionBackend` implementations: `PtySessionBackend` (the default),
   `PluginSessionBackend`, and `InMemorySession` for tests.
+
+### Library surface no TermProof command uses yet
+
+These are tested APIs with no caller in the CLI. Useful if you are building on
+the library; not evidence that a `termproof run` does any of it.
+
+- `attributed` — a per-cell screen carrying foreground, background, bold, dim,
+  italic, underline, strikethrough, reverse and display width, with an SVG
+  renderer. The screenshots a run writes today still come from the
+  single-colour text path.
+- `tmux` — a `Session` that runs the program in a tmux pane and reads the grid
+  back with `capture-pane`. A disagreement between it and the `vt100` path is
+  an emulation gap made visible.
+- `proc` — child processes with a deadline.
 
 ## Known gaps
 
