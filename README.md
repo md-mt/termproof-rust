@@ -68,9 +68,10 @@ nothing here should be read as a claim that it behaves the same way.
   divergences are enumerated in `harness/README.md` — four are the only rows
   where the two runtimes disagree on pass/fail, and they come from Python's JSON
   decoder accepting `NaN` and `Infinity`.
-- **There is new library surface that no command reaches yet.** Eight modules
-  landed as APIs with tests and no caller, so they are worth knowing about and
-  worth not mistaking for features:
+- **There is new library surface that no command reaches yet.** Fourteen
+  modules landed as APIs with tests and no caller, so they are worth knowing
+  about and worth not mistaking for features. `crates/termproof/README.md`
+  lists the same fourteen:
   - `termproof::terminal` grew `attributed`, a per-cell screen carrying
     foreground, background, bold, dim, italic, underline, strikethrough,
     reverse and display width, with an SVG renderer; `tmux`, a `Session` that
@@ -93,8 +94,9 @@ nothing here should be read as a claim that it behaves the same way.
   - The `termproof` crate root grew `parity`, which compares two runs and
     reports where they disagree; `before_after`, which reports which outcomes
     flipped; `selection`, which maps a changeset onto recipes via `ci_paths`;
-    `run_config`, a whole run described by one file; and `vocabulary`, a
-    configurable failure detector.
+    `run_config`, a whole run described by one file; `vocabulary`, a
+    configurable failure detector; and `build_info`, provenance for the binary
+    under test, so a result can be traced back to an exact artifact.
 
   **None of this is wired into `termproof run`.** A run writes
   `raw_output.txt`, `screen.txt` and a cast if one was recorded — no image at

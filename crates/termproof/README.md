@@ -73,8 +73,9 @@ the only one that has ever existed on crates.io.
 
 ### Library surface no TermProof command uses yet
 
-These are tested APIs with no caller in the CLI. Useful if you are building on
-the library; not evidence that a `termproof run` does any of it.
+Fourteen tested APIs with no caller in the CLI. Useful if you are building on
+the library; not evidence that a `termproof run` does any of it. The workspace
+README lists the same fourteen.
 
 - `parity` — compares two runs and reports where they disagree.
 - `before_after` — reports which outcomes flipped between two runs.
@@ -92,6 +93,10 @@ the library; not evidence that a `termproof run` does any of it.
   the grid back with `capture-pane`. A disagreement between it and the `vt100`
   path is an emulation gap made visible.
 - `terminal::proc` — child processes with a deadline.
+- `terminal::driver` — `SessionDriver`, a scenario-facing wrapper over
+  `Box<dyn Session>`: implement `Session` to write a backend, use
+  `SessionDriver` to write a scenario. Its tests are the integration suite
+  `tests/session_driver.rs` rather than a unit module.
 - `evidence::screenshot` and `evidence::cast_video` — stills and video frames
   rendered through one renderer rather than two unrelated ones.
 - `evidence::dedup` — skips re-rendering a screen identical to the step before
