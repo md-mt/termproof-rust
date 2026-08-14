@@ -77,6 +77,14 @@ nothing here should be read as a claim that it behaves the same way.
     runs the program in a tmux pane and reads the grid back with
     `capture-pane`, so a disagreement between it and the `vt100` path is an
     emulation gap made visible; and `proc`, child processes with a deadline.
+  - `termproof::terminal` also grew `driver`, a scenario-facing wrapper over
+    `Box<dyn Session>`. There are now two ways to talk to a session and they
+    point in opposite directions: **implement `Session` to write a backend,
+    use `SessionDriver` to write a scenario.** The trait stays narrow and
+    totally fallible because that is what makes a backend cheap to write; the
+    driver supplies default timeouts, a `screen_contains` convenience, and
+    defers errors so a failed keystroke is reported once at the assertion —
+    naming the call that first failed — instead of at every `?`.
   - `termproof::evidence` grew `screenshot` and `cast_video`, which render
     stills and video frames through that one renderer rather than two unrelated
     ones; `dedup`, which skips re-rendering a screen identical to the step

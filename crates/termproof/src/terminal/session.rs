@@ -1,5 +1,15 @@
 //! Public session interface — the only surface that step engines and
 //! execution modes may use.
+//!
+//! **This is the backend contract.** Implement [`Session`] when you are
+//! teaching TermProof to drive a new kind of terminal. It is deliberately
+//! narrow and un-opinionated: every call is fallible, every timeout is
+//! explicit, and nothing is remembered between calls, so a backend has as
+//! little to get right as possible.
+//!
+//! It is not the comfortable way to *write* a scenario. For that, wrap it in
+//! [`crate::terminal::SessionDriver`], which supplies default timeouts and
+//! defers errors to the assertion instead of raising them at every keystroke.
 
 use std::time::Duration;
 
@@ -10,6 +20,9 @@ use crate::terminal::error::SessionError;
 /// Execution modes and step actions must depend only on this interface;
 /// they must not reach into runner-private internals. This is the
 /// RUST-016 contract that closes #78.
+///
+/// Implement this for a backend. To drive one from a scenario, prefer
+/// [`crate::terminal::SessionDriver`].
 pub trait Session: Send {
     /// Send raw text without a trailing newline.
     fn send_text(&mut self, text: &str) -> Result<(), SessionError>;

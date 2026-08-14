@@ -1,4 +1,9 @@
 //! Terminal layer: PTY/process ownership, terminal screen, cast recording, idle, and session backends (RUST-005/006 + RUST-012 + RUST-016).
+//!
+//! Two layers face outwards, and they face opposite directions. Implement
+//! [`Session`] to teach TermProof a new kind of terminal; use
+//! [`SessionDriver`] to write a scenario against one. See
+//! [`driver`][self::driver] for the distinction in full.
 
 // RUST-005/006 PTY and process implementations
 pub mod attributed;
@@ -14,6 +19,7 @@ pub mod screen;
 pub mod backend;
 pub mod custom;
 pub mod docker;
+pub mod driver;
 pub mod error;
 pub mod inmemory;
 pub mod keys;
@@ -30,6 +36,7 @@ pub use screen::TerminalScreen;
 pub use backend::SessionBackend;
 pub use custom::PluginSessionBackend;
 pub use docker::{DockerBackendConfig, DockerSessionBackend};
+pub use driver::{DriverError, DriverTimeouts, SessionDriver};
 pub use error::SessionError;
 pub use inmemory::InMemorySession;
 pub use keys::{normalize_key, press_sequence, PressAction, PressError, KEYS};
