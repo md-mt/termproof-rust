@@ -1,0 +1,52 @@
+name: Parity gap
+description: The Rust port disagrees with the Python implementation. Read the maturity section and the harness README first.
+title: "[Parity]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is a port, and the Python implementation at [md-mt/termproof](https://github.com/md-mt/termproof) is the behavioural oracle. A *parity gap* is a case where the two disagree. Before filing:
+        - Read the [maturity section of the README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it) — the port is **not at parity** and there is no parity gate.
+        - Read [harness/README.md](https://github.com/md-mt/termproof-rust/blob/main/harness/README.md) — the differential harness already enumerates known divergences; check that this one is not already listed.
+  - type: textarea
+    id: layer
+    attributes:
+      label: Layer
+      description: Where do the two runtimes disagree? Steps, assertions, terminal/session behaviour, evidence output, or something else?
+    validations:
+      required: true
+  - type: textarea
+    id: oracle
+    attributes:
+      label: Python (oracle) behaviour
+      description: What the Python implementation does — verdict, diagnostic text, output. Include the TermProof version you tested against.
+    validations:
+      required: true
+  - type: textarea
+    id: port
+    attributes:
+      label: Rust port behaviour
+      description: What the port does instead — verdict, diagnostic text, output. Include the commit or tag you tested against.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: The recipe, corpus case, or commands that show the divergence. A minimal case is ideal.
+    validations:
+      required: true
+  - type: textarea
+    id: measurement
+    attributes:
+      label: Measurement context
+      description: If you ran the differential harness, what did it report? Which counts moved, and in which direction?
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I read the maturity section of the README and understand the port is not at parity.
+          required: true
+        - label: I read harness/README.md and confirmed this divergence is not already enumerated there.
+          required: true

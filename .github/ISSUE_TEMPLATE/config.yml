@@ -1,0 +1,12 @@
+# Issue template chooser configuration.
+#
+# See https://docs.github.com/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository
+
+blank_issues_enabled: true
+contact_links:
+  - name: TermProof (Python) — the shipped product
+    url: https://github.com/md-mt/termproof/issues
+    about: Questions, bugs and feature requests about the Python implementation belong in its repository, not here.
+  - name: Documentation
+    url: https://github.com/md-mt/termproof-rust/tree/main/docs
+    about: The engineering baseline, publishing mechanics and the reimplementation spec.

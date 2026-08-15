@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a defect in the Rust port. If the behaviour differs from the Python implementation, use the "Parity gap" form instead.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Before you fill this in:
+        - Read the [maturity section of the README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it) — the port is experimental and not at parity with the Python implementation.
+        - If what you saw is the port *disagreeing with Python*, use the [parity gap form](https://github.com/md-mt/termproof-rust/issues/new?template=parity_gap.yml) instead.
+        - Search the [existing issues](https://github.com/md-mt/termproof-rust/issues?q=is%3Aissue) for a duplicate.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened, and why it is a bug.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: The recipe file, commands, and anything else needed to reproduce. A minimal recipe is ideal.
+      placeholder: |
+        ```
+        # example.toml
+        ...
+
+        cargo run -p termproof-cli -- run example.toml
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened, including any error output.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release tag (e.g. v0.3.2) or the commit you are on. `git describe --tags` will tell you.
+      placeholder: v0.3.2
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS, architecture, and terminal if relevant.
+      placeholder: macOS 15 arm64
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I read the maturity section of the README.
+          required: true
+        - label: I checked that this is not a parity gap with the Python implementation (if it is, I will use the parity gap form).
+          required: true

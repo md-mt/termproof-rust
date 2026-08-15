@@ -1,0 +1,10 @@
+# Code owners for termproof-rust.
+#
+# Every path in the repository is owned by the maintainer account that owns
+# the repository. As the project grows, add narrower patterns here (for
+# example a docs owner, or a crate owner) — GitHub requires at least one owner
+# per pattern, and the last matching pattern wins for a given file.
+#
+# See https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @md-mt

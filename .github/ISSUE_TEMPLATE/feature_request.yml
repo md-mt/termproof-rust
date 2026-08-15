@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a new capability for the Rust port.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. Two things to keep in mind about this repository:
+        - The port is **in progress and not at parity** with the Python implementation — see the [maturity section of the README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it).
+        - The Python implementation at [md-mt/termproof](https://github.com/md-mt/termproof) is the shipped product. A feature that belongs to the product may be better filed there.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should be added or changed, and how it would work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else have you tried, or what designs did you consider?
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact on the port's contract
+      description: If this changes observed behaviour, how should it be measured against the Python oracle? Does it touch the differential harness, the recipe schema, or the README maturity section?
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I read the maturity section of the README and understand the port is not at parity with the Python implementation.
+          required: true
