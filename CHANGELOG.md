@@ -11,11 +11,18 @@ with it. Read the
 before relying on anything here.
 
 - Releases are cut by `.github/workflows/auto-release.yml` and published as
-  GitHub Releases; that workflow, `docs/publishing.md` and the git tags are the
-  source of truth for release mechanics. This file is the curated, hand-written
-  view, kept in sync with the tags.
-- Nothing has been published to crates.io yet. The only release artifact today
-  is the GitHub Release for each tag.
+  GitHub Releases; the `termproof` crate is published to crates.io from those
+  releases by `.github/workflows/publish-crates.yml`. Those workflows,
+  `docs/publishing.md` and the git tags are the source of truth for release
+  mechanics. This file is the curated, hand-written view, kept in sync with
+  the tags.
+- **`termproof` is published on crates.io through `0.3.2`** (`0.2.1`, `0.3.0`,
+  `0.3.1`, `0.3.2`, all unyanked). The other workspace crates —
+  `termproof-cli` and `termproof-plugin-protocol` — are **held back**
+  (`publish = false`) and are not on the registry; the pre-merge split names
+  (`termproof-core`, `termproof-terminal`, `termproof-evidence`) were merged
+  into `termproof` before any of them was published, so none was ever
+  reserved.
 - Version numbers apply to the whole workspace (all crates share one version
   from `[workspace.package]`), per the version-bump rule in
   [`docs/publishing.md`](docs/publishing.md).

@@ -40,11 +40,14 @@ port stays honest, and it has rules about regenerating expectations.
    they mean). If your change alters behaviour, update those descriptions
    *and* the counts honestly. A number nobody can reproduce is not a
    measurement.
-3. **Version and release claims must be true.** Nothing has been published to
-   crates.io yet; releases are GitHub Releases cut by
-   `.github/workflows/auto-release.yml`. See
-   [`docs/publishing.md`](docs/publishing.md) for the tag format and the
-   version-bump rule.
+3. **Version and release claims must be true.** `termproof` is published on
+   crates.io (through `0.3.2`); `termproof-cli` and
+   `termproof-plugin-protocol` are held back (`publish = false`) and are not
+   on the registry. Releases are GitHub Releases cut by
+   `.github/workflows/auto-release.yml`, with the `termproof` crate published
+   from those releases by `.github/workflows/publish-crates.yml`. See
+   [`docs/publishing.md`](docs/publishing.md) for the tag format, the
+   version-bump rule and the publish set.
 
 ## Getting started
 
@@ -137,12 +140,14 @@ and asserts a floor, not equality. If your change moves the port's answers:
 
 ## Releases
 
-Nothing is published to crates.io yet. Releases are cut by
-`.github/workflows/auto-release.yml` (weekly, only when something worth
-releasing landed) and published as GitHub Releases; the binaries are built by
-`.github/workflows/release-rust.yml` on `v*.*.*` tags, and crates.io publishing
-is `.github/workflows/publish-crates.yml`, triggered by a published release.
-The order, tag format, version-bump rule and pre-release checklist are in
+`termproof` is published on crates.io (through `0.3.2`); `termproof-cli` and
+`termproof-plugin-protocol` are held back (`publish = false`) and are not on
+the registry. Releases are cut by `.github/workflows/auto-release.yml`
+(weekly, only when something worth releasing landed) and published as GitHub
+Releases; the binaries are built by `.github/workflows/release-rust.yml` on
+`v*.*.*` tags, and crates.io publishing is
+`.github/workflows/publish-crates.yml`, triggered by a published release. The
+order, tag format, version-bump rule and pre-release checklist are in
 [`docs/publishing.md`](docs/publishing.md). You do not need to know any of
 this to contribute a PR — but if you are cutting a release, read it first.
 
