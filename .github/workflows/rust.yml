@@ -30,23 +30,35 @@ jobs:
       - name: test
         run: cargo test --workspace
       # `--all-features` cannot catch a feature that only builds alongside
-      # another, which is the failure mode an undeclared `dep:` produces. With
-      # three features the powerset is eight, so check all of it rather than a
-      # sample (#27, extended for `schema` in #28). `json-schema` implies
-      # `schema`, so two of the eight resolve to the same set — they are run
+      # another, which is the failure mode an undeclared `dep:` produces. So
+      # check the whole powerset rather than a sample (#27, extended for
+      # `schema` in #28 and for `junit` in #34). `json-schema` implies `schema`,
+      # so some combinations resolve to the same set as others — they are run
       # anyway, because what is being checked is that every combination a
       # consumer can *write* compiles, not every set cargo can resolve.
       # `default` and `--all-features` are the same set today and the steps
       # above already cover them.
+      #
+      # The list is enumerated from FEATURES rather than written out, so adding
+      # a feature grows the matrix by construction and cannot be half-extended:
+      # four features is sixteen combinations, and the count is printed so a
+      # silently shrinking matrix is visible in the log.
       - name: clippy and test each feature combination
         run: |
           set -eux
-          for features in "" "evidence" "json-schema" "schema" \
-                          "evidence,json-schema" "evidence,schema" \
-                          "json-schema,schema" "evidence,json-schema,schema"; do
+          FEATURES=(evidence junit json-schema schema)
+          total=$((1 << ${#FEATURES[@]}))
+          echo "feature powerset: $total combinations"
+          for mask in $(seq 0 $((total - 1))); do
+            combo=""
+            for i in "${!FEATURES[@]}"; do
+              if (( (mask >> i) & 1 )); then
+                combo="${combo:+$combo,}${FEATURES[$i]}"
+              fi
+            done
             cargo clippy -p termproof --all-targets \
-              --no-default-features --features "$features" -- -D warnings
-            cargo test -p termproof --no-default-features --features "$features"
+              --no-default-features --features "$combo" -- -D warnings
+            cargo test -p termproof --no-default-features --features "$combo"
           done
       # A widened requirement is a claim that the code works at the bottom of
       # the range, and nothing above tests that: the committed lockfile resolves

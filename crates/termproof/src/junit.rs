@@ -7,9 +7,10 @@
 //!
 //! This is a root module rather than part of [`evidence`](crate::evidence)
 //! because it is not part of the evidence pipeline: it reads a [`RunResult`]
-//! and nothing else, and it renders no screen, no still and no video.
-//! [`evidence`](crate::evidence) and `evidence::report` re-export
-//! [`generate_junit`], so the paths it has always had still resolve.
+//! and nothing else, and it renders no screen, no still and no video. Keeping
+//! it here is what lets the `junit` feature stand on its own without dragging
+//! `image` and `avt` in behind it (#34). [`evidence::report`](crate::evidence)
+//! re-exports [`generate_junit`] so the path it has always had still resolves.
 
 use crate::RunResult;
 
@@ -197,9 +198,9 @@ mod tests {
 
     #[test]
     fn junit_needs_no_artifacts() {
-        // The evidence pipeline is what fills `artifacts`; the writer reads a
-        // `RunResult` and nothing else, which is what makes this module's own
-        // home the crate root.
+        // The evidence pipeline is what fills `artifacts`; JUnit reads a
+        // `RunResult` and nothing else, which is why `junit` does not imply
+        // `evidence` (#34).
         let mut r = sample_result(true);
         r.artifacts.clear();
         let xml = generate_junit(&[r]);

@@ -117,18 +117,27 @@ and this document is updated.
   description and the issue that justifies them.
 - No feature silently changes CLI defaults or result semantics; behavior
   changes land behind explicit flags or features with tests.
-- `termproof` has three, all default-on. From #27: `evidence` (the `evidence`
-  module — `image`, `quick-junit`, `avt`) and `json-schema` (`validation`,
-  `pyschema` and the `json_schema` built-in assertion — `jsonschema`). From
-  #28: `schema` (the `schema` module and the derived `JsonSchema` impls —
-  `schemars`), which `json-schema` implies, since validating a recipe means
-  validating it against the schema `schema` generates. Default is the whole
-  crate; `default-features = false` is 66 transitive dependencies against 180.
+- `termproof` has four, all default-on. From #27: `evidence` (the `evidence`
+  module — `image`, `avt`) and `json-schema` (`validation`, `pyschema` and the
+  `json_schema` built-in assertion — `jsonschema`). From #28: `schema` (the
+  `schema` module and the derived `JsonSchema` impls — `schemars`), which
+  `json-schema` implies, since validating a recipe means validating it against
+  the schema `schema` generates. From #34: `junit` (the `junit` module —
+  `quick-junit`). Default is the whole crate; `default-features = false` is 66
+  transitive dependencies against 180.
 - A feature may exist for reasons other than compile cost. `schema` is six
   crates and would not earn a gate on size; it has one because `schemars` is
   the only dependency that reaches the public API, so it is the only one a
   consumer cannot deduplicate by pinning. Turning the feature off is the
   non-breaking answer to a consumer on a different `schemars` major (#28).
+- A feature implies another only where the code says it must. `json-schema`
+  implies `schema` because there is no other source for the schema it
+  validates against. `junit` implies nothing: #34 proposed
+  `junit = ["evidence", ...]`, and `generate_junit` turned out to read a
+  `RunResult` and nothing else, so the writer moved to a root `junit` module
+  and the two features are independent in both directions. An implication that
+  the code does not require is a dependency a consumer pays for and cannot
+  decline.
 - Gates go at module boundaries. Two exceptions, both contained: `assertions`
   has one `#[cfg]` match arm in `dispatch` plus one contiguous block of five
   private functions serving `json_schema` and nothing else; `schema` reaches
@@ -136,10 +145,15 @@ and this document is updated.
   `cfg_attr` helper attributes, which is unavoidable because `#[schemars(...)]`
   is an inert attribute registered by the derive and will not compile without
   it. A derive that lands on public types cannot be gated at a module boundary.
+  `junit` added no third exception: it gates a module. The two `#[cfg(feature =
+  "junit")] pub use` lines in `evidence` are path aliases that keep the 0.3.1
+  paths resolving — they compile no code of their own.
 - Every combination is built and tested, not just `default` and
-  `--all-features`. With three features that is the full powerset of eight —
-  including the two that resolve to the same set, because what is checked is
-  that every combination a consumer can *write* compiles.
+  `--all-features`. With four features that is the full powerset of sixteen —
+  including those that resolve to the same set as another, because what is
+  checked is that every combination a consumer can *write* compiles. The CI
+  step enumerates the powerset from a feature list rather than spelling the
+  combinations out, so adding a feature grows the matrix by construction.
 - A feature must not be able to compile a differential harness out. Parity
   evidence is the reason the harnesses exist, and a combination that drops it
   still reports green. Where a feature genuinely removes the capability a case
@@ -178,7 +192,8 @@ and this document is updated.
     ├── termproof/              # the library: models, config, schema, registries,
     │                           #   planning, orchestration; `terminal` for PTY/process
     │                           #   sessions, screen and cast recording; `evidence` for
-    │                           #   rendering, reports, video, baselines, diff, cache
+    │                           #   rendering, Markdown reports, video, baselines, diff,
+    │                           #   cache; `junit` for JUnit XML from a `RunResult`
     ├── termproof-cli/          # binary: command parsing, composition, diagnostics
     └── termproof-plugin-protocol/ # versioned process messages, client/host support
 ```

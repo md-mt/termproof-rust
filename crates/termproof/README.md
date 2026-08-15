@@ -24,28 +24,48 @@ the only one that has ever existed on crates.io.
 - **`terminal`** is the session layer — PTY, tmux and process sessions, plain
   and attributed screen state, asciicast recording.
 - **`evidence`** is the evidence pipeline — screenshot and video rendering,
-  Markdown and JUnit reports, visual baselines, diff and upload.
+  Markdown reports, visual baselines, diff and upload.
+- **`junit`** is the JUnit XML writer. It lived in `termproof-evidence` too, and
+  `evidence::report::generate_junit` still resolves, but it reads a `RunResult`
+  and renders nothing, so it is its own module and its own feature.
 
 ## Features
 
-All three are on by default, so `termproof = "0.3"` is the whole crate — the
+All four are on by default, so `termproof = "0.3"` is the whole crate — the
 shape that has always been published.
 
 | Feature | Enables | Costs |
 |---|---|---|
-| `evidence` | the `evidence` module | `image`, `quick-junit`, `avt` |
+| `evidence` | the `evidence` module | `image`, `avt` |
+| `junit` | the `junit` module, and `generate_junit` in `evidence` | `quick-junit` |
 | `json-schema` | `validation`, `pyschema`, and the `json_schema` built-in assertion. Implies `schema` | `jsonschema` |
 | `schema` | the `schema` module, and `JsonSchema` on `Recipe`, `VerifierConfig` and the types they contain | `schemars` |
 
-Turning all three off takes the crate from 180 transitive dependencies to 66:
+Turning all four off takes the crate from 180 transitive dependencies to 66:
 
 ```toml
 termproof = { version = "0.3", default-features = false }
 ```
 
 That build still has the whole session layer and the other seven built-in
-assertions; what it loses is the evidence pipeline, JSON Schema validation and
-schema generation.
+assertions; what it loses is the evidence pipeline, JUnit output, JSON Schema
+validation and schema generation.
+
+`junit` is the only feature that neither implies another nor is implied by one.
+It was proposed as `junit = ["evidence", ...]`, but `generate_junit` takes a
+`&[RunResult]` and reads nothing else, so making it depend on `evidence` would
+have charged a JUnit-only consumer `image` and `avt` for nothing. Either half
+can be had without the other, and each costs only its own crates:
+
+```toml
+# stills, video and Markdown, no JUnit — six crates lighter than 0.3.1's
+# `evidence`: quick-junit, quick-xml, newtype-uuid, uuid, strip-ansi-escapes, vte
+termproof = { version = "0.3", default-features = false, features = ["evidence"] }
+
+# JUnit, no renderers — those same six crates and nothing else, fifteen lighter
+# than asking for both
+termproof = { version = "0.3", default-features = false, features = ["junit"] }
+```
 
 `schema` is the small one — six crates, against `json-schema`'s 87 — and it is
 not off by default and not off for size. It exists because `schemars` is the
@@ -98,7 +118,8 @@ this crate; it would also save nothing, since every build drives a terminal.
   the canvas, grid and palette with `render_svg` and nothing else. A PNG that
   looks like the SVG is a rasterised one, which is `ScreenshotRenderer`.
   `evidence::render`'s module docs have the table.
-- `generate_markdown` / `generate_junit` — human and machine reports for a run.
+- `generate_markdown` — a human report for a run. Its machine counterpart is
+  `junit::generate_junit`, behind the `junit` feature.
 - `apply_visual_diff` — compare a screenshot against a stored baseline, or
   refresh the baseline.
 - `render_mp4` — video via external `agg` and `ffmpeg` binaries, resolved at

@@ -163,8 +163,9 @@ authority on TermProof's behaviour.
   - `termproof` — the whole library, and the only crate that publishes. Its
     root is models, config, schema, registries, planning and orchestration;
     `terminal` is PTY/tmux/process sessions, terminal screen and cast
-    recording; `evidence` is rendering, reports, video, baselines, diff, dedup
-    and publishing. It was merged from `termproof-core`, `termproof-terminal`
+    recording; `evidence` is rendering, Markdown reports, video, baselines,
+    diff, dedup and publishing; `junit` is JUnit XML from a `RunResult`, which
+    needs none of that. It was merged from `termproof-core`, `termproof-terminal`
     and `termproof-evidence` before any of them was published — see that
     crate's README for why the layout is this one.
   - `termproof-cli` — binary (`termproof`), command parsing, diagnostics

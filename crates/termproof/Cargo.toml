@@ -36,10 +36,10 @@ all-features = true
 workspace = true
 
 # Feature names carry a one-line description and the issue that justifies them
-# (docs/engineering-baseline.md §7). All three are default-on, so no consumer
+# (docs/engineering-baseline.md §7). All four are default-on, so no consumer
 # sees a change by not asking for one. `evidence` and `json-schema` are from
 # #27: every consumer used to compile all 18 dependencies whether or not it
-# used them. `schema` is from #28.
+# used them. `schema` is from #28, `junit` from #34.
 #
 # There is deliberately no `terminal`/`core` split. `terminal` is the base layer
 # the crate root is built on — `recipe`, `steps`, `runner`, `execution` and
@@ -48,11 +48,26 @@ workspace = true
 # `portable-pty` and `vt100` are needed by any build that drives a terminal,
 # which is every build.
 [features]
-default = ["evidence", "json-schema", "schema"]
+default = ["evidence", "junit", "json-schema", "schema"]
 
-# The evidence pipeline: stills, video, Markdown/JUnit reports, baselines,
-# visual diff and upload. Gates the whole `evidence` module (#27).
-evidence = ["dep:image", "dep:quick-junit", "dep:avt"]
+# The evidence pipeline: stills, video, Markdown reports, baselines, visual
+# diff and upload. Gates the whole `evidence` module (#27).
+evidence = ["dep:image", "dep:avt"]
+
+# JUnit XML reports: the `junit` module and the `generate_junit` re-exports in
+# `evidence` (#34).
+#
+# #34 proposed `junit = ["evidence", "dep:quick-junit"]`, and the code says the
+# implication is not needed. `generate_junit` takes a `&[RunResult]` and reads
+# nothing else — no renderer, no collector, no artifact of any kind; the
+# `artifacts` map it prints is a `BTreeMap<String, String>` on `RunResult` that
+# a caller can populate without this crate's evidence layer at all. So the
+# function moved to a root `junit` module and this feature stands alone, which
+# also makes `junit` on its own cost `quick-junit` and nothing else instead of
+# `image` and `avt` as well. `evidence::report::generate_junit` and
+# `evidence::generate_junit` are kept as re-exports, so every path that
+# resolved at 0.3.1 still resolves under `default`.
+junit = ["dep:quick-junit"]
 
 # JSON Schema *validation*: recipe validation and the `json_schema` built-in
 # assertion. Implies `schema`, because validating a recipe means validating it

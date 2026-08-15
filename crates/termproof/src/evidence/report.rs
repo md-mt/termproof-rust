@@ -4,13 +4,14 @@
 //! collapses the duplicated helper logic identified in #80 into a single
 //! module.
 //!
-//! The JUnit writer moved to [`crate::junit`]: it reads a `RunResult` and
-//! nothing else, and shares no helper with the Markdown one. The re-export
-//! below keeps `evidence::report::generate_junit` resolving where it always
-//! did.
+//! The JUnit writer is in [`crate::junit`], behind the `junit` feature: it
+//! reads a `RunResult` and nothing else, and shares no helper with the
+//! Markdown one. The re-export below keeps `evidence::report::generate_junit`
+//! resolving where it always did; it gates no code of its own.
 
 use crate::RunResult;
 
+#[cfg(feature = "junit")]
 pub use crate::junit::generate_junit;
 
 // ---------------------------------------------------------------------------

@@ -19,8 +19,9 @@
 //! - **[`evidence`]** is what was `termproof-evidence`: screenshot and video
 //!   rendering, Markdown reports, visual baselines, diff and upload.
 //! - **[`junit`]** is the JUnit XML writer. It was in `termproof-evidence` too,
-//!   and [`evidence`] still re-exports it, but it reads a [`RunResult`] and
-//!   renders nothing, so it is its own module rather than part of the pipeline.
+//!   and [`evidence::report`] still re-exports it, but it reads a [`RunResult`]
+//!   and renders nothing, so #34 moved it out to where it can be compiled
+//!   without the renderers.
 //!
 //! The two nested modules keep their own re-exports rather than flattening
 //! into the root. `error` is defined by both the root and [`terminal`], so
@@ -35,11 +36,15 @@
 //!
 //! # Features
 //!
-//! All three are on by default, so a consumer that does not name features gets
+//! All four are on by default, so a consumer that does not name features gets
 //! the whole crate — the shape that has always been published.
 //!
-//! - **`evidence`** — the [`evidence`] and [`junit`] modules. Off, the crate
-//!   does not compile `image`, `quick-junit` or `avt`.
+//! - **`evidence`** — the [`evidence`] module. Off, the crate does not compile
+//!   `image` or `avt`.
+//! - **`junit`** — the [`junit`] module and the `generate_junit` re-exports in
+//!   [`evidence`]. Off, the crate does not compile `quick-junit`. It does not
+//!   imply `evidence` and is not implied by it: JUnit is written from a
+//!   [`RunResult`], so the two are independent in both directions (#34).
 //! - **`json-schema`** — [`validation`], [`pyschema`] and the `json_schema`
 //!   built-in assertion. Off, the crate does not compile `jsonschema`, and
 //!   `json_schema` is absent from [`assertions::BUILTIN_TYPES`] rather than
@@ -57,7 +62,7 @@
 
 #[cfg(feature = "evidence")]
 pub mod evidence;
-#[cfg(feature = "evidence")]
+#[cfg(feature = "junit")]
 pub mod junit;
 pub mod terminal;
 

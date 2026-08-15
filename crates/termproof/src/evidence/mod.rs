@@ -37,8 +37,10 @@ pub use collector::{
 };
 pub use diff::apply_visual_diff;
 pub use render::{normalize_text, render_by_extension, render_png, render_svg};
-// `generate_junit` now lives in `crate::junit`; this keeps
+// `generate_junit` is re-exported from [`crate::junit`], where it moved in #34
+// so that the `junit` feature costs `quick-junit` and nothing else. This keeps
 // `evidence::generate_junit` resolving where it always did.
+#[cfg(feature = "junit")]
 pub use crate::junit::generate_junit;
 pub use report::{
     generate_markdown, generate_markdown_single, validate_duration, validate_recipe_json,
