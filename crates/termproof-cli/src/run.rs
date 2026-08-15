@@ -3,8 +3,8 @@
 //! This used to print a summary of its own arguments and exit 0. Everything
 //! it now does goes through the same public surfaces a plugin would use:
 //! `termproof::Runner` for execution, `termproof::store` for the
-//! run directory and atomic writes, and `termproof::evidence::report` for the
-//! reporters.
+//! run directory and atomic writes, and `termproof::evidence::report` plus
+//! `termproof::junit` for the reporters.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -12,9 +12,8 @@ use std::path::{Path, PathBuf};
 use clap::parser::ValueSource;
 use clap::ArgMatches;
 
-use termproof::evidence::report::{
-    cli_summary, generate_junit, generate_markdown, generate_markdown_single,
-};
+use termproof::evidence::report::{cli_summary, generate_markdown, generate_markdown_single};
+use termproof::junit::generate_junit;
 use termproof::planner::{plan_items, run_parallel, PlanItem};
 use termproof::result::RunResult;
 use termproof::runner::{LoadedRecipe, Runner};

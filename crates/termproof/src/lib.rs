@@ -17,7 +17,10 @@
 //!   sessions, plain and attributed screen state, asciicast recording, idle
 //!   detection and the [`terminal::SessionBackend`] implementations.
 //! - **[`evidence`]** is what was `termproof-evidence`: screenshot and video
-//!   rendering, Markdown and JUnit reports, visual baselines, diff and upload.
+//!   rendering, Markdown reports, visual baselines, diff and upload.
+//! - **[`junit`]** is the JUnit XML writer. It was in `termproof-evidence` too,
+//!   and [`evidence`] still re-exports it, but it reads a [`RunResult`] and
+//!   renders nothing, so it is its own module rather than part of the pipeline.
 //!
 //! The two nested modules keep their own re-exports rather than flattening
 //! into the root. `error` is defined by both the root and [`terminal`], so
@@ -35,8 +38,8 @@
 //! All three are on by default, so a consumer that does not name features gets
 //! the whole crate — the shape that has always been published.
 //!
-//! - **`evidence`** — the [`evidence`] module. Off, the crate does not compile
-//!   `image`, `quick-junit` or `avt`.
+//! - **`evidence`** — the [`evidence`] and [`junit`] modules. Off, the crate
+//!   does not compile `image`, `quick-junit` or `avt`.
 //! - **`json-schema`** — [`validation`], [`pyschema`] and the `json_schema`
 //!   built-in assertion. Off, the crate does not compile `jsonschema`, and
 //!   `json_schema` is absent from [`assertions::BUILTIN_TYPES`] rather than
@@ -54,6 +57,8 @@
 
 #[cfg(feature = "evidence")]
 pub mod evidence;
+#[cfg(feature = "evidence")]
+pub mod junit;
 pub mod terminal;
 
 pub mod agent;

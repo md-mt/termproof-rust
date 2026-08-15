@@ -37,9 +37,11 @@ pub use collector::{
 };
 pub use diff::apply_visual_diff;
 pub use render::{normalize_text, render_by_extension, render_png, render_svg};
+// `generate_junit` now lives in `crate::junit`; this keeps
+// `evidence::generate_junit` resolving where it always did.
+pub use crate::junit::generate_junit;
 pub use report::{
-    generate_junit, generate_markdown, generate_markdown_single, validate_duration,
-    validate_recipe_json,
+    generate_markdown, generate_markdown_single, validate_duration, validate_recipe_json,
 };
 pub use video::{
     render_mp4, render_mp4_or_fail, resolve_agg, resolve_ffmpeg, AggFfmpegBackend, VideoBackend,
