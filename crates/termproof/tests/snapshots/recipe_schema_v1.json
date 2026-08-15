@@ -1,0 +1,223 @@
+{
+  "$id": "https://github.com/md-mt/termproof/docs/recipe-schema-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "definitions": {
+    "Assertion": {
+      "additionalProperties": true,
+      "description": "A single assertion in a recipe.",
+      "properties": {
+        "name": {
+          "default": null,
+          "description": "Optional human-readable assertion name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "description": "Assertion type, e.g. `output_contains`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "CommandSpec": {
+      "additionalProperties": true,
+      "description": "Command specification for a recipe.",
+      "properties": {
+        "argv": {
+          "description": "Target command and arguments; at least one entry required.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cwd": {
+          "default": null,
+          "description": "Working directory for the command; `None` means inherited.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Environment variables for the command.",
+          "type": "object"
+        },
+        "pty": {
+          "default": true,
+          "description": "Whether to allocate a PTY for the command.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "argv"
+      ],
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": true,
+      "description": "A single step in a recipe.",
+      "properties": {
+        "action": {
+          "description": "Action name, e.g. `wait_for_text`, `send_line`.",
+          "type": "string"
+        },
+        "name": {
+          "default": null,
+          "description": "Optional human-readable step name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeout_seconds": {
+          "default": null,
+          "description": "Per-step timeout in seconds, if overridden.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Typed recipe model.",
+  "properties": {
+    "assertions": {
+      "default": [],
+      "description": "Assertions to evaluate after execution.",
+      "items": {
+        "$ref": "#/definitions/Assertion"
+      },
+      "type": "array"
+    },
+    "checks": {
+      "default": [],
+      "description": "Checks list (human-readable expectations).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ci_paths": {
+      "default": [],
+      "description": "CI path filters.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "cols": {
+      "default": 100,
+      "description": "Terminal columns.",
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "command": {
+      "$ref": "#/definitions/CommandSpec",
+      "description": "Command to execute."
+    },
+    "description": {
+      "default": "",
+      "description": "Human-readable description.",
+      "type": "string"
+    },
+    "determinism": {
+      "default": "deterministic",
+      "description": "Determinism label.",
+      "type": "string"
+    },
+    "execution": {
+      "default": "scripted",
+      "description": "Execution mode name, e.g. `scripted` or `agent-driven`.",
+      "type": "string"
+    },
+    "expect_exit_code": {
+      "default": 0,
+      "description": "Expected exit code; `None` means no expectation.",
+      "format": "int32",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "intent": {
+      "default": "",
+      "description": "Intent description.",
+      "type": "string"
+    },
+    "name": {
+      "description": "Human-readable recipe identifier.",
+      "type": "string"
+    },
+    "operator": {
+      "additionalProperties": true,
+      "default": {},
+      "description": "Operator configuration (free-form).",
+      "type": "object"
+    },
+    "priority": {
+      "default": "P2",
+      "description": "Priority label, e.g. `P2`.",
+      "type": "string"
+    },
+    "recipe_version": {
+      "const": 1
+    },
+    "renderers": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "default": {
+        "default": []
+      },
+      "description": "Renderer table, e.g. `{\"default\": []}`.",
+      "type": "object"
+    },
+    "rows": {
+      "default": 30,
+      "description": "Terminal rows.",
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "steps": {
+      "default": [],
+      "description": "Ordered steps to drive the session.",
+      "items": {
+        "$ref": "#/definitions/Step"
+      },
+      "type": "array"
+    },
+    "timeout_seconds": {
+      "default": 30.0,
+      "description": "Overall recipe timeout in seconds.",
+      "format": "double",
+      "type": "number"
+    }
+  },
+  "required": [
+    "command",
+    "name"
+  ],
+  "title": "TermProof recipe v1",
+  "type": "object"
+}

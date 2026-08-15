@@ -226,6 +226,31 @@ workspace README in the same change.
 - Golden, property, conformance, and packaging smoke tests are added by the
   milestones that need them (spec section 6.1); the baseline keeps the suite
   small and deterministic.
+- The generated recipe schema is pinned by a checked-in snapshot
+  (`crates/termproof/tests/schema_snapshot.rs` plus
+  `crates/termproof/tests/snapshots/recipe_schema_v1.json`). The guard exists
+  because the schema unit tests assert only `$schema`, two `required` entries
+  and the `recipe_version` const, so a structural rewrite (`definitions` to
+  `$defs` with every `$ref` retargeted, `minimum: 0.0` to `minimum: 0`, key
+  and `required` ordering) can slip through with the suite green — exactly
+  what a `schemars` major bump did (#33).
+- The snapshot is compared as parsed `serde_json::Value` trees, not as text:
+  object key order in the file is ignored (semantically irrelevant), but every
+  structural difference — keywords, numbers, array order, `$ref` targets —
+  fails the test. The test and its snapshot ship in the published package, so
+  a consumer testing the published crate gets the same check.
+- Re-blessing is deliberate and never the default. After an intentional schema
+  change, run
+  `TERM_PROOF_BLESS_SCHEMA=1 cargo test -p termproof --test schema_snapshot`
+  to rewrite the snapshot, review the diff, and commit the new snapshot in the
+  same change as the schema edit. The env var name follows the `TERM_PROOF_*`
+  convention used elsewhere in the crate.
+- What the snapshot does and does not prove: it **does** catch accidental
+  changes to this crate's generated schema; it does **not** establish
+  agreement with the canonical schema, which lives outside this repository and
+  is not vendored here. That remains parity-gate work (the seam is
+  `schema::load_canonical_schema`, which returns `None` in every checkout
+  layout here today).
 - Every Rust pull request must pass locally, before push:
   `cargo fmt --check --all`, `cargo clippy --workspace --all-targets
   --all-features -- -D warnings`, and `cargo test --workspace`.

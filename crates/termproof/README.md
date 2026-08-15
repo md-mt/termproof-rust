@@ -201,6 +201,15 @@ the divergences.
 schema and the example corpus stay with the Python repository on purpose, as
 the contract both implementations answer to.
 
+What this crate does pin is its *own* generated schema, to a checked-in
+snapshot (`tests/snapshots/recipe_schema_v1.json`, guarded by
+`tests/schema_snapshot.rs`). The guard compares parsed JSON trees, so object
+key order is ignored but any structural drift in `generate_recipe_schema()`'s
+output — keywords, numbers, array order, `$ref` targets — fails the test, and
+re-blessing is a deliberate env-var flow (`TERM_PROOF_BLESS_SCHEMA=1`). It
+catches accidental changes to this crate's schema; it does not establish
+agreement with the canonical schema, which remains parity-gate work.
+
 ## Known gaps
 
 - `terminal::DockerSessionBackend` is a stub.
@@ -227,7 +236,12 @@ example against the driver, and the reversal conditions.
 The two differential tests (`tests/differential_steps.rs`,
 `tests/differential_assertions.rs`) are excluded from the published package —
 they replay a corpus that lives at the repository root and is not shipped.
-Run them from a repository checkout.
+
+Everything else in `tests/` ships, including the schema snapshot
+(`tests/snapshots/recipe_schema_v1.json`) and its guard
+(`tests/schema_snapshot.rs`), so a consumer that runs the published crate's
+tests gets the same drift check this repository runs. `cargo package --list`
+is the proof. The differential tests are run from a repository checkout.
 
 ## Licence
 

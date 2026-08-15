@@ -1,8 +1,20 @@
 //! JSON Schema generation for recipes (Draft 2020-12).
 //!
 //! Uses `schemars` as the source-to-schema generator. The generated schema is
-//! Draft 2020-12 (spec §5.3) and is checked against the checked-in
-//! `docs/recipe-schema-v1.json` for drift.
+//! Draft 2020-12 (spec §5.3).
+//!
+//! The crate's own generated schema is pinned by a checked-in parsed-JSON
+//! snapshot (`crates/termproof/tests/schema_snapshot.rs` + its snapshot
+//! file). The snapshot is compared as `serde_json::Value` trees, so object
+//! key order is ignored but every structural difference — keywords, numbers,
+//! array order, `$ref` targets — fails the test. Re-blessing is deliberate
+//! and non-default: `TERM_PROOF_BLESS_SCHEMA=1 cargo test -p termproof
+//! --test schema_snapshot` (see `docs/engineering-baseline.md` §10).
+//!
+//! The snapshot proves only that this crate's own output does not drift; it
+//! does not establish agreement with the canonical schema, which lives
+//! outside this repository and is not vendored here. That remains parity-gate
+//! work, and `load_canonical_schema` is the seam it will use.
 
 use schemars::gen::{SchemaGenerator, SchemaSettings};
 
