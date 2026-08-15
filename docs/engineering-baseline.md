@@ -101,6 +101,19 @@ and this document is updated.
   `Cargo.toml` naming the API or behaviour that put it there (#28). The
   `test at the declared dependency floors` step in `.github/workflows/rust.yml`
   runs the suite at each floor, so a floor that stops being true fails CI.
+- A comment in `Cargo.toml` records the reason but does not publish it. The
+  manifest is not what a consumer weighing the dependency reads — crates.io
+  renders the crate README and docs.rs renders the module — so a floor above
+  the oldest workable version is also stated in `crates/termproof/README.md`,
+  and in the module whose API pins it where there is one. #35 was filed
+  because two such floors were reasoned about only in the manifest and read
+  from outside as arbitrary. A floor is only as good as the argument a
+  consumer can find for it.
+- The reason must be the true one. "This version is required" and "the older
+  version would need a different implementation with a weaker guarantee" are
+  different claims, and the second is often the accurate one; it is written
+  that way. A floor kept for a reason that turns out to be a preference is
+  still allowed, but it says so.
 - The dependency/feature graph is kept minimal: default features are enabled
   only when needed, and optional heavy dependencies (ffmpeg/agg adapters,
   Docker) are behind features or adapter traits, never hard required.

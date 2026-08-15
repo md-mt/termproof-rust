@@ -79,6 +79,36 @@ There is no `terminal` feature. The crate root is built on `terminal` and
 nothing in `terminal` depends on the root, so a build without it would not be
 this crate; it would also save nothing, since every build drives a terminal.
 
+## Dependency floors
+
+Every version requirement here is a floor — the lowest version this code
+compiles and passes the differential harnesses against — and CI runs the suite
+at each one, so a floor that stops being true fails the build. If you already
+pin one of these elsewhere, two of them will not move, and the reason is not
+guessable from the import lists:
+
+- **`portable-pty` 0.9, not 0.8.** Every name `terminal::pty` imports exists in
+  0.8 too. What does not is `ExitStatus::signal()`, added in 0.9.0 and read by
+  `PtySession::exit_signal`; at 0.8.1 the signal name is a private field, and
+  that is the *only* compile error at 0.8. It is a choice, not an
+  impossibility — 0.8 still shows the name through `Display`, and scraping it
+  back out returns the same value — but a `Display` format carries no semver
+  guarantee, so that version would answer `None` after a reword with nothing
+  to catch it. The floor buys one public accessor; nothing else in the crate
+  reads it, and it is not on the `Session` trait.
+- **`unicode-width` 0.2, not 0.1.** `vt100` 0.16 requires `^0.2.1`, and this
+  crate's own width calls have to consult the same table as the `vt100` grid
+  they describe or the two disagree about which column a wide glyph occupies —
+  which moves glyphs in rendered SVGs and changes
+  `AttributedScreen::render_fingerprint`, so evidence dedup stops recognising
+  two identical screens as identical. Forcing 0.1 splits the graph in two and
+  fails three tests in `terminal::attributed` that exist to catch exactly that.
+  Widening the requirement to `>=0.1, <0.3` would resolve to 0.2 anyway, so it
+  would buy nothing and only make the floor untestable.
+
+Everything else is a plain floor with no such constraint; `Cargo.toml` carries
+a comment on each one that sits above the oldest workable version.
+
 ## What it provides
 
 ### Root — recipes, steps, assertions, orchestration

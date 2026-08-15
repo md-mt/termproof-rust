@@ -17,6 +17,24 @@
 //!   written to it, so text sent with `send_line` appears on the screen once
 //!   from the echo and again from whatever the child prints.
 //!
+//! # Why `portable-pty` is required at 0.9 and not 0.8
+//!
+//! Worth knowing if you already pin `portable-pty` elsewhere, because the
+//! reason is not visible from what this module imports — every name in the
+//! `use` line exists in 0.8 as well.
+//!
+//! One thing does not: [`PtySession::exit_signal`] reads
+//! `ExitStatus::signal()`, added in 0.9.0. In 0.8.1 the signal name is a
+//! private field and that is the only compile error at 0.8; everything else
+//! here is unchanged across the two.
+//!
+//! It is a choice rather than an impossibility. 0.8 still shows the name
+//! through `Display` — `"Terminated by {name}"` — and reading it back out
+//! works. It is not done because a `Display` format is not semver-covered
+//! surface: reword it and `exit_signal` quietly starts answering `None`,
+//! which is a wrong answer about how a child died and one no compiler would
+//! catch. The floor buys a typed accessor instead.
+//!
 //! Merge dependency: RUST-004 provides the typed `Recipe` / `CommandSpec`
 //! and `SessionBackend` trait. `PtyConfig` scaffolds against the expected
 //! fields.
@@ -404,6 +422,12 @@ impl PtySession {
     ///
     /// `portable-pty` surfaces the signal by name rather than by number, so
     /// this is reported separately instead of being folded into `exit_code`.
+    /// The name is the platform's — `strsignal`, so `"Hangup"` on Linux and
+    /// `"Hangup: 1"` on macOS — which is why nothing here matches on it.
+    ///
+    /// This is the whole reason the workspace floors `portable-pty` at 0.9;
+    /// see the module docs. It is not on [`Session`], so a caller reaches it
+    /// only through a concrete `PtySession`.
     pub fn exit_signal(&self) -> Option<&str> {
         self.exit_signal.as_deref()
     }
@@ -1012,6 +1036,45 @@ mod tests {
             .map(|s| s.success())
             .unwrap_or(false);
         assert!(!alive, "child {pid} survived Drop");
+    }
+
+    /// The one thing the `portable-pty` 0.9 floor buys, exercised rather than
+    /// asserted in a manifest comment.
+    ///
+    /// A signalled child has no meaningful exit code — `From<std::process::
+    /// ExitStatus>` gives it 1 — so the name is the only report of *how* it
+    /// died. `ExitStatus::signal()` arrived in 0.9.0; at the 0.8 floor the
+    /// reporter asked about in #35 this method would not exist to test.
+    ///
+    /// The name itself is `strsignal`'s and differs by platform, so this
+    /// checks that one was reported, not which.
+    #[cfg(unix)]
+    #[test]
+    fn a_signalled_child_reports_the_signal_by_name() {
+        let config = PtyConfig::new(vec![
+            "sh".into(),
+            "-c".into(),
+            "echo READY; sleep 30".into(),
+        ]);
+        let mut sess = PtySession::new(config, 80, 24).expect("new");
+        sess.spawn().expect("spawn");
+        assert!(sess
+            .wait_for_text("READY", Duration::from_secs(5))
+            .expect("wait"));
+
+        sess.terminate().expect("terminate");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while sess.is_alive() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let signal = sess.exit_signal();
+        assert!(
+            signal.is_some_and(|s| !s.is_empty()),
+            "child was killed by a signal but reported none; exit_code={:?}",
+            sess.exit_code()
+        );
+        sess.close();
     }
 
     #[test]

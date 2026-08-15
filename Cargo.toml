@@ -111,10 +111,33 @@ schemars = { version = "0.8", features = ["preserve_order"] }
 # `AnyOf`/`OneOfNotValid` contexts and `PrimitiveTypesBitMap::iter` at 0.29,
 # `Validator::iter_errors` as well at 0.24.
 jsonschema = { version = ">=0.32, <0.34" }
-# 0.9, not 0.8, because `ExitStatus::signal()` is 0.9's. 0.8.1 keeps the signal
-# name in a private field with no accessor, so on 0.8 a child killed by a signal
-# reports an exit code and nothing else — `Session::exit_signal` would have to
-# go. Widening this one costs a feature, so it stays (#28).
+# 0.9, not 0.8, because `ExitStatus::signal()` is 0.9's, and
+# `PtySession::exit_signal` is the published accessor that reads it.
+#
+# Re-checked against the 0.8.1 and 0.9.0 sources in #35, because the reason is
+# not visible from the import list — all five names `pty.rs` imports do exist
+# in 0.8. Building at `>=0.8, <0.10` with 0.8.1 resolved produces exactly one
+# error, `pty.rs` `no method named signal ... private field, not a method`.
+# Everything else the module touches is unchanged: `openpty`, `spawn_command`,
+# `try_clone_reader`, `take_writer`, `resize`, `try_wait`, `kill`,
+# `process_id`, `exit_code`, and the `cwd`-or-`$HOME` rule that `launch_dir`
+# mirrors for #30. 0.9's other additions — `Downcast + Send` supertraits,
+# `MasterPty::tty_name`, and a `sigprocmask` reset in the forked child — are
+# real but nothing here relies on them.
+#
+# Stated honestly, this is a choice and not an impossibility. 0.8's
+# `Display for ExitStatus` writes "Terminated by {name}", and scraping the name
+# back out of it compiles on 0.8 and returns the identical value — verified on
+# both versions, same `Some("Hangup: 1")`. It is rejected because a `Display`
+# format carries no semver guarantee: if it were ever reworded, `exit_signal`
+# would start answering `None` with no compile error, which is a silent wrong
+# answer about how a child died. A typed accessor is worth the floor.
+#
+# The cost of the floor is one public method. `exit_signal` is not on the
+# `Session` trait, so no execution mode and neither differential harness can
+# reach it; it exists for a library consumer holding a `PtySession`, and
+# `terminal::pty::tests::a_signalled_child_reports_the_signal_by_name` is what
+# keeps the floor load-bearing rather than merely asserted.
 portable-pty = "0.9"
 vt100 = "0.16"
 quick-junit = "0.4"
@@ -126,9 +149,25 @@ unicode-normalization = "0.1"
 # stream lands in a different column depending on which path read it — see the
 # note on width tables in `terminal::attributed`.
 #
-# So this is not widenable while `vt100` is 0.16: that asks for `^0.2.1`, and a
-# floor of 0.1 here would resolve to a second copy *and* a second table, which
-# is both halves of what the requirement exists to prevent (#28).
+# So this is not widenable while `vt100` is 0.16, which asks for `^0.2.1`.
+# Measured in #35 rather than argued:
+#
+# - `>=0.1, <0.3` resolves to 0.2.2 anyway, so as a *requirement* it changes
+#   nothing. As a *floor* it is a claim CI cannot honour: the floor job pins by
+#   rewriting the requirement to `=<floor>`, and `=0.1.14` splits the graph into
+#   `termproof -> 0.1.14` beside `vt100 0.16.2 -> 0.2.2`.
+# - That split fails the suite: 369 pass, 3 fail —
+#   `both_paths_measure_width_with_the_same_table` (`[2, 0, 1]` against
+#   `[1, 1]`), `both_paths_place_the_following_glyph_in_the_same_column` and
+#   `the_text_path_reads_the_same_width_table`, all in `terminal::attributed`.
+#   So this is a correctness floor with tests behind it, not a bloat argument.
+#
+# One correction to how this was first written: a second copy is not what a
+# lower floor would *add*. `avt` already brings 0.1.14 into any `evidence`
+# build, and `attributed.rs` documents that as the one contained exception.
+# What a lower floor would do is move *our* width calls onto that copy, i.e.
+# onto the far side of the boundary from the `vt100` grid they have to agree
+# with (#28, #35).
 unicode-width = "0.2"
 tempfile = "3.10"
 thiserror = "2.0"
