@@ -1038,16 +1038,20 @@ mod tests {
         assert!(!alive, "child {pid} survived Drop");
     }
 
-    /// The one thing the `portable-pty` 0.9 floor buys, exercised rather than
-    /// asserted in a manifest comment.
+    /// [`PtySession::exit_signal`] reports a name, not just an exit code.
     ///
     /// A signalled child has no meaningful exit code — `From<std::process::
     /// ExitStatus>` gives it 1 — so the name is the only report of *how* it
-    /// died. `ExitStatus::signal()` arrived in 0.9.0; at the 0.8 floor the
-    /// reporter asked about in #35 this method would not exist to test.
+    /// died. The name itself is `strsignal`'s and differs by platform
+    /// (`"Hangup"`, `"Hangup: 1"`), so this checks that one was reported, not
+    /// which.
     ///
-    /// The name itself is `strsignal`'s and differs by platform, so this
-    /// checks that one was reported, not which.
+    /// This does **not** enforce the `portable-pty` 0.9 floor, and is not
+    /// claimed to. It asserts the public behaviour, and the 0.8 `Display`
+    /// scrape the module docs describe produces the same behaviour, so this
+    /// test passes on 0.8 as well (#37). What holds the floor is the typed
+    /// `ExitStatus::signal()` call in `is_alive`, which will not compile
+    /// there. Two separate guarantees, worth not conflating.
     #[cfg(unix)]
     #[test]
     fn a_signalled_child_reports_the_signal_by_name() {

@@ -136,8 +136,14 @@ jsonschema = { version = ">=0.32, <0.34" }
 # The cost of the floor is one public method. `exit_signal` is not on the
 # `Session` trait, so no execution mode and neither differential harness can
 # reach it; it exists for a library consumer holding a `PtySession`, and
-# `terminal::pty::tests::a_signalled_child_reports_the_signal_by_name` is what
-# keeps the floor load-bearing rather than merely asserted.
+# `terminal::pty::tests::a_signalled_child_reports_the_signal_by_name` covers
+# what that consumer sees.
+#
+# What enforces the floor is the call to `ExitStatus::signal()` itself, which
+# does not compile on 0.8. Not that test: it asserts the *public* behaviour of
+# `exit_signal`, which the `Display` scrape above satisfies just as well, so it
+# passes on 0.8 too (#37). The two are worth keeping apart — the test says the
+# accessor works, the typed call says which versions it works on.
 portable-pty = "0.9"
 vt100 = "0.16"
 quick-junit = "0.4"
