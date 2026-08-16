@@ -71,6 +71,27 @@ platforms, each with a `.sha256` checksum and a provenance attestation:
 
 See [releases](https://github.com/md-mt/termproof-rust/releases) for every tag.
 
+**As a container image** — published to GitHub's registry on every push to
+`main` and every release tag, for `linux/amd64`:
+
+```sh
+docker run --rm -v "$PWD:/workspace" ghcr.io/md-mt/termproof-rust:latest \
+  run hello.recipe.yaml --out /workspace/.termproof/runs
+```
+
+Tags are `latest`, the branch name, the release tag, and `sha-<commit>`. The
+image carries `rsvg-convert` and `ffmpeg` so the evidence pipeline's rasteriser
+and video encoder are present; it does not carry `agg`, and
+[`docker/termproof.Dockerfile`](docker/termproof.Dockerfile) says why. Every
+pull request builds the image and runs a real recipe inside it before anything
+is published — see [`docker/smoke/run-smoke.sh`](docker/smoke/run-smoke.sh),
+which you can run yourself:
+
+```sh
+docker run --rm --entrypoint /opt/termproof/smoke/run-smoke.sh \
+  ghcr.io/md-mt/termproof-rust:latest
+```
+
 ## Quickstart
 
 From a temporary directory, with a binary installed as above:
@@ -177,6 +198,9 @@ it. Branches under `archive/` here hold Rust work that was never merged to
 - `specs/` — the specifications the port is written against, and
   `OBSERVATION-LOG.md`
 - `harness/` — the differential harnesses against the Python oracle
+- `docker/` — the container image and the recipe its build smoke-tests itself
+  with. Not packaged and not shipped by a release, so a change here does not
+  cut one (see `.github/scripts/release-decide.py`)
 - `crates/` — each crate carries its own `README.md`, which is what crates.io
   renders for it
   - `termproof` — the whole library, and the only crate that publishes

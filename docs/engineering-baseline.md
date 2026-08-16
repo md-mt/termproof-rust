@@ -323,6 +323,15 @@ workspace README in the same change.
   workspace version. The attestation subject is verified against the archive
   digest, so a green build-provenance attestation always names the archive it
   was produced for.
+- **Container image.** `docker/termproof.Dockerfile` builds
+  `ghcr.io/<owner>/termproof-rust` in two stages; the runtime stage carries no
+  Rust toolchain, and `docker/smoke/run-smoke.sh` asserts that rather than
+  trusting it. Both base images are pinned by digest for the same reason
+  actions are pinned by SHA, and `.github/dependabot.yml` moves the tag and
+  the digest together. Pull requests build the image, do not push it, and run
+  a real recipe inside it — one that drives `rsvg-convert` and `ffmpeg` on a
+  pseudo-terminal and asserts on the artifacts, not on the exit code. Nothing
+  reaches the registry that has not passed that run.
 - **Windows is not supported.** The tested matrix is Linux x86-64, macOS
   x86-64 and macOS arm64 (build-only for arm64). Windows is documented as
   unverified in the README and gets no badge and no claim until a real

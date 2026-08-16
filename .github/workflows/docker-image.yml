@@ -1,0 +1,143 @@
+# Builds the `termproof` container image and publishes it to GitHub's
+# registry at ghcr.io/<owner>/termproof-rust.
+#
+# ## What proves the image works
+#
+# A pull request builds the image and does not push it, and then runs a real
+# recipe *inside the image it just built* — `docker/smoke/run-smoke.sh`, which
+# is baked in so the same command reproduces the check by hand. That recipe
+# drives `rsvg-convert` and `ffmpeg` on a pseudo-terminal and asserts on the
+# PNG, the MP4 and the evidence TermProof wrote, not on the exit code alone.
+#
+# The order matters: the smoke step is a `needs`-free step in the same job,
+# after the build and before any push, so an image that cannot run a recipe
+# never reaches the registry. `docker/termproof.Dockerfile` explains which
+# external programs are in the image and which are deliberately not.
+#
+# ## Tags
+#
+# The same scheme the Python sibling publishes under: branch, tag, `sha-`
+# prefix, and `latest` only on the default branch. On a pull request
+# metadata-action still computes tags — nothing is pushed with them, but the
+# build is labelled the same way, so the tag expression itself is exercised.
+#
+# ## Credentials
+#
+# The built-in `GITHUB_TOKEN` with `packages: write`. There is no new secret
+# and nothing to rotate. `contents: read` is the default and stays explicit.
+name: Docker Image
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    # Stable, explicit name: repository rulesets reference required checks by
+    # name (docs/engineering-baseline.md §11).
+    name: Build, smoke-test and publish the image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Collect image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/termproof-rust
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Built once, loaded into the runner's daemon rather than pushed, so the
+      # smoke run below and the push below operate on the same image. `load`
+      # needs a single-platform build; linux/amd64 is what the runners are and
+      # what the release binaries target first.
+      - name: Build the image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: docker/termproof.Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The gate. Runs a recipe end to end inside the freshly built image and
+      # asserts on what it produced; see docker/smoke/run-smoke.sh for the
+      # full list of checks. Nothing is pushed if this fails.
+      - name: Run a recipe inside the built image
+        env:
+          IMAGE: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+        run: |
+          docker run --rm --entrypoint /opt/termproof/smoke/run-smoke.sh "$IMAGE"
+
+      # Recorded on the run summary so the smoke result is not the only thing
+      # a reviewer can see about the image. Every value reaches the shell
+      # through `env:` rather than through `${{ }}` inside `run:`.
+      - name: Report what the image contains
+        env:
+          IMAGE: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          PUSHED: ${{ github.event_name != 'pull_request' }}
+        run: |
+          SIZE=$(docker image inspect "$IMAGE" --format '{{.Size}}' | awk '{printf "%.0f MB", $1/1048576}')
+          VERSION=$(docker run --rm "$IMAGE" --version)
+          {
+            echo "### Image"
+            echo
+            echo "- Version: $VERSION"
+            echo "- Size: $SIZE"
+            echo "- Pushed: $PUSHED"
+            echo "- Tags:"
+            echo "$TAGS" | while IFS= read -r tag; do
+              [ -n "$tag" ] && echo "  - \`$tag\`"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `docker push` on the already-loaded tags rather than a second
+      # build-push-action run. A rebuild — even a fully cached one — is a
+      # different export of the image than the one the smoke step just ran, and
+      # the whole point of the smoke step is that what gets published is what
+      # was tested. This pushes those exact bytes.
+      - name: Push the image
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          echo "$TAGS" | while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            echo "pushing $tag"
+            # The loop body runs in a subshell, so a bare failure here would be
+            # swallowed by the next iteration; exit out of it instead.
+            docker push "$tag" || exit 1
+          done

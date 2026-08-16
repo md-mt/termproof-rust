@@ -1,4 +1,4 @@
-# Dependency update automation. Two ecosystems, both on a weekly grouped
+# Dependency update automation. Three ecosystems, all on a weekly grouped
 # schedule with a small PR cap so a quiet week cannot open a flood.
 #
 # Cargo updates arrive as one grouped PR. The workspace treats a version
@@ -10,6 +10,11 @@
 # is pinned to an immutable commit SHA with a version comment (see
 # docs/engineering-baseline.md §11); Dependabot moves the SHA and the comment
 # together, which is the only way a pin does not rot.
+#
+# Docker base images follow the same rule for the same reason:
+# `docker/termproof.Dockerfile` pins both stages by digest, and a digest with
+# nobody moving it is a pin that rots into an unpatched base. Dependabot moves
+# the tag and the digest together.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -29,5 +34,16 @@ updates:
     open-pull-requests-limit: 5
     groups:
       actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directories:
+      - "/docker"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      docker:
         patterns:
           - "*"

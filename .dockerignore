@@ -1,0 +1,13 @@
+# Keeps the build context to what docker/termproof.Dockerfile actually copies:
+# the manifests, the toolchain pin, `crates/` and `docker/`. `target/` alone is
+# multiple gigabytes locally and would otherwise be uploaded to the daemon on
+# every build, only to be ignored.
+.git
+.github
+.specify
+docs
+harness
+specs
+target
+.claude
+.termproof

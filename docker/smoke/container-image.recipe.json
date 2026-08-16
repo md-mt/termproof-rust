@@ -1,0 +1,82 @@
+{
+  "recipe_version": 1,
+  "name": "container-image-smoke",
+  "description": "Drives the external binaries the container image ships (rsvg-convert, ffmpeg) from a real recipe on a real pseudo-terminal, and asserts on what they produced.",
+  "intent": "Prove the published image can run a recipe end to end, not just answer --help.",
+  "priority": "P0",
+  "determinism": "deterministic",
+  "execution": "scripted",
+  "command": {
+    "argv": [
+      "/bin/sh",
+      "-c",
+      "set -eu; rsvg-convert --output panel.png panel.svg; printf 'rasterised %s bytes\\n' \"$(wc -c < panel.png | tr -d ' ')\"; ffmpeg -nostdin -loglevel error -y -loop 1 -i panel.png -t 1 -r 8 -c:v mpeg4 -pix_fmt yuv420p clip.mp4; printf 'encoded %s bytes\\n' \"$(wc -c < clip.mp4 | tr -d ' ')\"; echo SMOKE-OK"
+    ],
+    "cwd": "/tmp/termproof-smoke",
+    "env": {
+      "TERM": "xterm-256color"
+    },
+    "pty": true
+  },
+  "cols": 100,
+  "rows": 30,
+  "timeout_seconds": 120,
+  "expect_exit_code": 0,
+  "steps": [
+    {
+      "name": "rasterise the panel",
+      "action": "wait_for_text",
+      "text": "rasterised ",
+      "timeout_seconds": 60
+    },
+    {
+      "name": "encode the clip",
+      "action": "wait_for_text",
+      "text": "encoded ",
+      "timeout_seconds": 60
+    },
+    {
+      "name": "reach the end of the script",
+      "action": "wait_for_text",
+      "text": "SMOKE-OK",
+      "timeout_seconds": 30
+    }
+  ],
+  "assertions": [
+    {
+      "name": "the script ran to completion on the terminal",
+      "type": "screen_contains",
+      "value": "SMOKE-OK"
+    },
+    {
+      "name": "rsvg-convert reported a rasterised panel",
+      "type": "output_contains",
+      "value": "rasterised "
+    },
+    {
+      "name": "ffmpeg reported an encoded clip",
+      "type": "output_contains",
+      "value": "encoded "
+    },
+    {
+      "name": "no tool wrote a zero-byte artifact",
+      "type": "output_not_contains",
+      "value": " 0 bytes"
+    },
+    {
+      "name": "rsvg-convert produced a PNG",
+      "type": "file_exists",
+      "value": "panel.png"
+    },
+    {
+      "name": "ffmpeg produced an MP4",
+      "type": "file_exists",
+      "value": "clip.mp4"
+    }
+  ],
+  "checks": [
+    "rsvg-convert is installed and rasterises an SVG the renderer could have emitted",
+    "ffmpeg is installed and encodes a video stream",
+    "a pseudo-terminal can be allocated inside the container"
+  ]
+}
