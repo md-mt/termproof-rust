@@ -41,7 +41,7 @@ The harnesses assert a **floor rather than equality**: agreement can rise but
 must never fall, and panics and cases that never return are asserted at zero
 rather than ratcheted. Full agreement is deliberately **not** required — the
 remaining gaps are open decisions that are not the port's to make (see
-[Known residual](#known-residual-divergences) below).
+[Known defects and divergences](#known-defects-and-divergences) below).
 
 ## Step layer
 

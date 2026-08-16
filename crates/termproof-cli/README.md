@@ -11,7 +11,7 @@ terminal applications. Part of
 > port. Read
 > [the maturity section of the workspace README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it)
 > and
-> [docs/status-and-parity.md](https://github.com/md-mt/termproof-rust/blob/main/docs/status-and-parity.md)
+> [docs/status-and-parity.md](../../docs/status-and-parity.md)
 > before depending on this binary.
 
 ## Install
