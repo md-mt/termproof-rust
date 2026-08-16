@@ -1,25 +1,28 @@
 # Publishing to crates.io
 
-Nothing here has been published yet. The first release reserves the name it
-uses, and **crates.io never releases a name once it is taken, even after a
-yank** — so read [What publishes, and what does
-not](#what-publishes-and-what-does-not) before the first release rather than
-after it.
+`termproof` is published on crates.io, currently through **0.3.2** (`0.2.1`,
+`0.3.0`, `0.3.1`, `0.3.2`, all unyanked). `termproof-cli` and
+`termproof-plugin-protocol` are **not** published — they carry
+`publish = false` on purpose. **crates.io never releases a name once it is
+taken, even after a yank**, so read [What publishes, and what does
+not](#what-publishes-and-what-does-not) before changing the publish set rather
+than after it.
 
 ## What publishes, and what does not
 
-One crate is in scope:
+One crate is in scope, and it is the only one that has ever been published:
 
 | Crate | Publishes | Why |
 |---|---|---|
-| `termproof` | yes | the whole library: recipe model, steps, assertions, orchestration, terminal sessions, evidence pipeline |
+| `termproof` | yes — published through `0.3.2` | the whole library: recipe model, steps, assertions, orchestration, terminal sessions, evidence pipeline |
 | `termproof-cli` | **held** | `publish = false` |
 | `termproof-plugin-protocol` | **held** | `publish = false` |
 
 `termproof-plugin-protocol` is held because it is a leaf nothing depends on,
 serving a plugin ecosystem that does not exist yet, and its shape will move as
 the port approaches parity. `termproof-cli` is held for now as a deliberate
-choice about what the first release commits to.
+choice about what the published surface commits to — the releases that have
+shipped (`0.2.1` through `0.3.2`) carried the library only.
 
 Both keep complete metadata. Lifting `publish = false` is the only change
 needed to publish either of them — the release automation derives its set from
@@ -56,7 +59,7 @@ topologically sorted over its internal dependencies — and prints:
 
 ```console
 $ .github/scripts/publish-plan.py
-{"version": "0.2.1", "order": ["termproof"], "held": ["termproof-cli", "termproof-plugin-protocol"]}
+{"version": "0.3.2", "order": ["termproof"], "held": ["termproof-cli", "termproof-plugin-protocol"]}
 ```
 
 The derivation agrees with what the manifests say. It also refuses two states
@@ -133,7 +136,7 @@ same trap.
 
 ## Tag format
 
-**`v<version>` — `v0.2.1`, not `0.2.1`.** A tag in any other form fails the
+**`v<version>` — `v0.3.2`, not `0.3.2`.** A tag in any other form fails the
 release before anything is uploaded.
 
 Both forms are common in the wild, so this is a choice rather than a rule.
@@ -143,8 +146,8 @@ a tag that publishes the crates but never builds the binaries — a release that
 is half-done and looks complete. One format, and it is the one already in use.
 
 The check is exact string equality against `v$VERSION`, where `$VERSION` comes
-from `cargo metadata`. So `v0.2.1` against a workspace at `0.2.1` passes;
-`0.2.1`, `V0.2.1`, `v0.2.1-rc1` and `v0.3.0` all fail with a message naming
+from `cargo metadata`. So `v0.3.2` against a workspace at `0.3.2` passes;
+`0.3.2`, `V0.3.2`, `v0.3.2-rc1` and `v0.4.0` all fail with a message naming
 both values.
 
 ## Version-bump rule
@@ -207,8 +210,10 @@ file is copied into each crate directory; keep the copies in sync with the root
 - `.github/workflows/publish-crates.yml` — the only thing that uploads to a
   registry.
 - `.github/workflows/release-rust.yml` — builds and attests the `termproof`
-  binary for tagged releases. It does not publish to crates.io. Its own header
-  notes it has never run in this repository.
+  binary for tagged releases. It does not publish to crates.io. It has run
+  successfully on every tag from `v0.2.1` through `v0.3.2`, attaching the
+  per-platform archives and checksums; its header notes the remaining
+  caveats.
 - `.github/workflows/rust.yml` — fmt, clippy and tests on every pull request.
   It has no packaging step: the release workflow's pull-request dry run covers
   that, and duplicating it would mean two places to keep correct.

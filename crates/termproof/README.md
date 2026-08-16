@@ -9,6 +9,8 @@ half of [TermProof](https://github.com/md-mt/termproof-rust).
 > and the behavioural oracle for TermProof; there is no parity gate for this
 > port. Read
 > [the maturity section of the workspace README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it)
+> and
+> [docs/status-and-parity.md](https://github.com/md-mt/termproof-rust/blob/main/docs/status-and-parity.md)
 > before depending on this crate.
 
 ## Layout
@@ -158,8 +160,9 @@ a comment on each one that sits above the oldest workable version.
 ### Library surface no TermProof command uses yet
 
 Fourteen tested APIs with no caller in the CLI. Useful if you are building on
-the library; not evidence that a `termproof run` does any of it. The workspace
-README lists the same fourteen.
+the library; not evidence that a `termproof run` does any of it.
+[`docs/status-and-parity.md`](https://github.com/md-mt/termproof-rust/blob/main/docs/status-and-parity.md)
+lists the same fourteen.
 
 - `parity` — compares two runs and reports where they disagree.
 - `before_after` — reports which outcomes flipped between two runs.
@@ -195,7 +198,8 @@ Python implementation. On those corpora the two runtimes reach 82/115 full
 agreement on steps and 124/147 on assertions. That is a layer-level number, not
 a product-level one — screen fidelity and whole-recipe execution are outside
 it. `harness/README.md` in the repository is the authority on the counts and
-the divergences.
+the divergences; [`docs/status-and-parity.md`](https://github.com/md-mt/termproof-rust/blob/main/docs/status-and-parity.md)
+carries the full inventory of what a run still cannot do.
 
 `load_canonical_schema` finds nothing in this repository: the canonical recipe
 schema and the example corpus stay with the Python repository on purpose, as

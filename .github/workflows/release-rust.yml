@@ -1,15 +1,15 @@
 # Ported from md-mt/termproof at the repository split. Only the Rust binary
 # build survives the move: the PyPI wheel, Homebrew formula and container jobs
-# belonged to the Python package and stay with it. Whether the Rust CLI is
-# distributed alongside the Python package at all is an open decision.
+# belonged to the Python package and stay with it. The Rust CLI ships as the
+# binary attached to each tagged release of this repository; it is not
+# distributed alongside the Python package.
 #
-# UNVERIFIED: this workflow has never run end to end in this repository. The
-# build and packaging steps have been reproduced by hand for the host target
-# and the archives verify and extract, but the provenance attestation below has
-# never executed and still needs a release identity review before the first
-# tag. What it asserts — which workflow, on which ref, in which repository,
-# built a given archive — is the thing consumers verify against, and the first
-# real tag is the wrong place to discover it says something unintended.
+# VERIFIED: this workflow has run end to end on every tag from v0.2.1 through
+# v0.3.2 — each release carries the three per-platform archives and checksums
+# below, and the provenance attestations produced by the build job. Re-check
+# the release page before cutting a new tag; what this workflow asserts —
+# which workflow, on which ref, in which repository, built a given archive —
+# is the thing consumers verify against.
 #
 # ## What this produces
 #

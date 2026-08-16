@@ -10,11 +10,21 @@ terminal applications. Part of
 > and the behavioural oracle for TermProof; there is no parity gate for this
 > port. Read
 > [the maturity section of the workspace README](https://github.com/md-mt/termproof-rust#maturity--read-this-before-using-it)
+> and
+> [docs/status-and-parity.md](https://github.com/md-mt/termproof-rust/blob/main/docs/status-and-parity.md)
 > before depending on this binary.
 
 ## Install
 
-**This crate is not published to crates.io.** Build it from a checkout:
+**This crate is not published to crates.io** — its name is not being spent on
+the registry while the binary is still moving, so `cargo install termproof-cli`
+will not work. Install from a release tag, or build from a checkout:
+
+```sh
+cargo install --git https://github.com/md-mt/termproof-rust --tag v0.3.2 termproof-cli
+```
+
+or
 
 ```sh
 cargo build --release -p termproof-cli

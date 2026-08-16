@@ -33,9 +33,10 @@ port stays honest, and it has rules about regenerating expectations.
    behavioural authority. A divergence from it is a *parity gap* to be
    measured and documented, not a stylistic preference to be shipped silently.
    Use the [parity gap issue form](.github/ISSUE_TEMPLATE/parity_gap.yml).
-2. **No claim of parity without a measurement.** The README's maturity section
-   quotes the differential harness counts (currently 82/115 full agreement on
-   the step corpus, 124/147 on the assertion corpus — see
+2. **No claim of parity without a measurement.** The README's capability
+   table and [`docs/status-and-parity.md`](docs/status-and-parity.md) quote
+   the differential harness counts (currently 82/115 full agreement on the
+   step corpus, 124/147 on the assertion corpus — see
    [`harness/README.md`](harness/README.md) for the exact numbers and what
    they mean). If your change alters behaviour, update those descriptions
    *and* the counts honestly. A number nobody can reproduce is not a
