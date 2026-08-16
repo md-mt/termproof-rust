@@ -1,0 +1,68 @@
+# Deny policy for the workspace, enforced by `cargo deny check` in
+# .github/workflows/security.yml on every pull request, on push to main, and
+# weekly (advisories land without a code change; the licence/bans/sources
+# checks compare the graph, which a weekly run re-reads from the committed
+# lockfile).
+#
+# Every intentional exception is documented inline with an owner and, where
+# meaningful, an expiry condition. Nothing is allowed silently.
+
+[advisories]
+# cargo-deny 0.20 removed the per-severity fields: every vulnerability and
+# unsound advisory now emits an error and fails the check, which is exactly
+# the posture this workspace wants. What remains configurable here:
+# - yanked: a lockfile pinned to a yanked version fails rather than quietly
+#   shipping a release that the registry no longer stands behind.
+# - ignore: kept empty. An advisory that cannot be fixed yet is added here
+#   with the issue that owns the decision, and removed when the fix lands.
+db-path = "$CARGO_HOME/advisory-dbs"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# The allowlist is the union of what the graph legitimately uses, read from
+# `cargo metadata` with --all-features so a feature-gated dependency cannot
+# slip in unseen. Everything else is denied by default.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+]
+
+[bans]
+# Multiple versions are warned, not denied, because the graph deliberately
+# carries a small number of documented duplicates:
+# - unicode-width 0.1.14 (via `avt`) beside 0.2.2 (our floor, tied to
+#   `vt100`) — see Cargo.toml and crates/termproof/src/terminal/attributed.rs.
+#   The 0.1.14 copy cannot be removed while `avt` is in the graph, so this is
+#   a permanent exception, not a thing to fix.
+# - vte 0.14.1 (via `strip-ansi-escapes`, itself from `quick-junit`) beside
+#   0.15.0 (via `vt100`). Incidental: both come from transitive dependencies
+#   and neither pins the other; a future bump of either side may collapse it.
+# New duplicates should be collapsed, not added; a warning that becomes a
+# permanent fixture should be escalated to the maintainers.
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# crates.io only. A git or alternate-registry dependency needs a deliberate
+# allow entry here plus a reason in docs/engineering-baseline.md — the
+# supply-chain posture is that nothing outside the public registry is trusted.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

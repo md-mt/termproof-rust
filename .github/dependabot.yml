@@ -1,0 +1,33 @@
+# Dependency update automation. Two ecosystems, both on a weekly grouped
+# schedule with a small PR cap so a quiet week cannot open a flood.
+#
+# Cargo updates arrive as one grouped PR. The workspace treats a version
+# requirement as a floor with tests at the floor (see
+# docs/engineering-baseline.md §6), so a grouped update is reviewed against
+# the floor tests in one place rather than piecemeal.
+#
+# GitHub Actions updates arrive as one grouped PR. Every third-party action
+# is pinned to an immutable commit SHA with a version comment (see
+# docs/engineering-baseline.md §11); Dependabot moves the SHA and the comment
+# together, which is the only way a pin does not rot.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"

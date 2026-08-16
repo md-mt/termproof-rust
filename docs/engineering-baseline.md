@@ -121,6 +121,23 @@ and this document is updated.
   documented exceptions; new dependency added in RUST-007 is
   `regex` 1.13.1 (corpus-selected engine per spec §5.3, declared as
   `default-features = false` with explicit `std`+`unicode` features).
+- Since PR4, `cargo deny check` is a required gate
+  (`.github/workflows/security.yml`), covering advisories, licences, bans and
+  sources against `deny.toml`. It runs on every pull request, on push to
+  `main`, and weekly on a schedule (new RustSec advisories land without a code
+  change; the weekly run re-reads the committed lockfile against a fresh
+  database). Intentional exceptions live in `deny.toml` and must carry an
+  owner and, where meaningful, an expiry condition — see the file. Two
+  duplicate pairs exist in the graph today, both warned (not denied) by
+  policy: `unicode-width` 0.1.14 via `avt` beside the 0.2.2 floor
+  (a permanent exception, documented in `deny.toml`), and `vte` 0.14.1 via
+  `strip-ansi-escapes` beside 0.15.0 via `vt100` (incidental; it is what the
+  bump of `quick-junit` to 0.7 carries and is not worth a suppression).
+- Supply-chain hygiene for the automation itself is part of the baseline:
+  every third-party GitHub Action is pinned to an immutable commit SHA with a
+  version comment (see §11), and `.github/dependabot.yml` opens weekly grouped
+  update PRs for both Cargo and GitHub Actions. A pin without a comment is a
+  pin that cannot be updated safely.
 
 ## 7. Feature policy
 
@@ -253,4 +270,55 @@ workspace README in the same change.
   layout here today).
 - Every Rust pull request must pass locally, before push:
   `cargo fmt --check --all`, `cargo clippy --workspace --all-targets
-  --all-features -- -D warnings`, and `cargo test --workspace`.
+  --all-features -- -D warnings`, and `cargo test --workspace`. Where the
+  change touches dependencies, packaging or the public API, the corresponding
+  security-workflow gates (§11) apply as well: `cargo deny check` and
+  `cargo package -p termproof` locally, `cargo semver-checks check-release
+  -p termproof` before a release changes the public API.
+
+## 11. Supply chain, CI and release verification
+
+- **Immutable action pins.** Every third-party GitHub Action in
+  `.github/workflows/` is referenced by commit SHA, with the human-readable
+  version in a trailing comment (`actions/checkout@<sha> # v7.0.1`). A moving
+  tag (`@v7`, `@master`) can be replaced silently by its owner; a SHA cannot.
+  Dependabot moves SHA and comment together on update, which is why the
+  comment is mandatory — a SHA without a version cannot be reviewed.
+- **Dependabot.** `.github/dependabot.yml` opens weekly grouped PRs for Cargo
+  and GitHub Actions, capped at five open PRs per ecosystem. Updates are
+  reviewed against the dependency-floor test (§6) and the feature-powerset
+  test (§7) in the same PR.
+- **cargo deny.** `deny.toml` is the workspace's dependency policy — licence
+  allowlist (deny-by-default), bans (duplicates warned, wildcards denied),
+  sources (crates.io only), and advisories (every vulnerability and unsound
+  advisory fails; `yanked` crates fail). Every intentional exception carries
+  an owner and, where meaningful, an expiry condition. Enforced by the
+  `Security` workflow on every PR and push, and weekly on a schedule so a
+  freshly published advisory is caught without waiting for a PR.
+- **cargo semver-checks.** The `Security` workflow compares this crate's
+  public API against the latest version published on crates.io on every PR
+  (`cargo semver-checks check-release -p termproof`), and fails on a breaking
+  change. Under the pre-1.0 convention (docs/publishing.md) that is any
+  change the convention would call a minor bump; it is caught here before a
+  release, not by the first consumer who fails to compile.
+- **Package verification.** PR CI runs `cargo package -p termproof` and
+  `.github/scripts/verify-package-contents.sh`, which asserts the tarball
+  carries the snapshot test and its fixture (issue #33's promise) and does
+  not carry the differential tests or `harness/` (which cannot run without
+  the repository).
+- **Release archives.** `release-rust.yml` smoke-tests every archive before
+  upload: `.github/scripts/verify-release-archive.sh` verifies the sha256,
+  extracts the tarball, and asserts `termproof --version` reports exactly the
+  workspace version. The attestation subject is verified against the archive
+  digest, so a green build-provenance attestation always names the archive it
+  was produced for.
+- **Windows is not supported.** The tested matrix is Linux x86-64, macOS
+  x86-64 and macOS arm64 (build-only for arm64). Windows is documented as
+  unverified in the README and gets no badge and no claim until a real
+  Windows job with working PTY behaviour passes CI. This is a deliberate
+  scope decision (spec §3), not an oversight.
+- **Stable job names.** The checks a repository ruleset requires are named
+  explicitly and stably in every workflow (`fmt, clippy, test (Rust
+  ubuntu-latest)`, `cargo deny (advisories, licenses, bans, sources)`, …). A
+  ruleset entry that names a job by a name that changes between runs would
+  silently stop gating, so workflow job names are part of the contract.

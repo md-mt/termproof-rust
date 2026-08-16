@@ -172,7 +172,14 @@ The workflow enforces the mechanical items; these are the ones it cannot.
 - [ ] The tag is `v<version>` and points at that commit.
 - [ ] `cargo package --list -p <crate>` for each publishable crate — read it,
       do not skim it. Anything large, generated, or repository-only does not
-      belong in a tarball.
+      belong in a tarball. PR CI does this check mechanically via
+      `.github/scripts/verify-package-contents.sh`; the manual read is for
+      what the script does not know to look for.
+- [ ] `cargo semver-checks check-release -p termproof` passes — the public
+      API of the crate being published is compatible with the latest version
+      on crates.io. The Security workflow runs this on every pull request, so
+      by release time it should already be green; re-run it at the tag to be
+      sure.
 - [ ] The maturity warning in the crate's README still describes the port
       accurately. It is what the crates.io front page carries; a stale one is
       a claim of parity that has not been earned.
@@ -213,7 +220,16 @@ file is copied into each crate directory; keep the copies in sync with the root
   binary for tagged releases. It does not publish to crates.io. It has run
   successfully on every tag from `v0.2.1` through `v0.3.2`, attaching the
   per-platform archives and checksums; its header notes the remaining
-  caveats.
+  caveats. Since PR4, each archive is smoke-tested before upload
+  (`.github/scripts/verify-release-archive.sh`: checksum, extraction, and
+  `termproof --version` matching the workspace version), and the attestation
+  subject is verified against the archive digest.
 - `.github/workflows/rust.yml` — fmt, clippy and tests on every pull request.
   It has no packaging step: the release workflow's pull-request dry run covers
   that, and duplicating it would mean two places to keep correct.
+- `.github/workflows/security.yml` — dependency/advisory policy (`cargo deny
+  check` against `deny.toml`), public-API compatibility (`cargo semver-checks`
+  against the latest published `termproof`), and package-tarball verification
+  (`cargo package -p termproof` plus content assertions). It runs on every
+  pull request and push, and the deny check also runs weekly on a schedule so
+  a newly published advisory is caught without a code change.

@@ -146,7 +146,13 @@ jsonschema = { version = ">=0.32, <0.34" }
 # accessor works, the typed call says which versions it works on.
 portable-pty = "0.9"
 vt100 = "0.16"
-quick-junit = "0.4"
+# 0.7, not 0.4, because 0.4 pulls quick-xml 0.31, which carries
+# RUSTSEC-2026-0194 and RUSTSEC-2026-0195 (unbounded namespace-resolver
+# allocation on untrusted XML). quick-junit 0.7 builds on quick-xml 0.41,
+# where both are fixed; the API surface this crate uses — `Report`,
+# `TestSuite`, `TestCase`, `TestCaseStatus`, `NonSuccessKind` and the
+# `set_*` builders — is unchanged across the bump (verified by the suite).
+quick-junit = "0.7"
 image = { version = "0.25", default-features = false, features = ["png"] }
 sha2 = "0.10"
 unicode-normalization = "0.1"

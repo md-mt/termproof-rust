@@ -1,0 +1,81 @@
+# Supply-chain and packaging gates: dependency/advisory policy, public-API
+# semver checks, and package-tarball verification.
+#
+# These are deliberately separate from rust.yml. The compile/test matrix is
+# the thing that must run fast on every push; these checks are cheap to run
+# once on Linux, and the advisory check also wants a schedule — new RustSec
+# advisories land without a code change, so a weekly run re-reads the
+# committed lockfile against a fresh database.
+#
+# Job names here are stable and explicit on purpose: repository rulesets
+# reference required checks by name, so a name that changed between runs
+# would silently stop gating. Keep them stable.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Monday 07:00 UTC — same slot as the Auto-release workflow, so the two
+    # scheduled passes over the repository do not land on top of each other.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deny:
+    name: cargo deny (advisories, licenses, bans, sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
+        with:
+          tool: cargo-deny@0.20.2
+      - name: cargo deny check
+        run: cargo deny check
+
+  semver:
+    name: cargo semver-checks (public API vs latest published termproof)
+    # Unconditional in one Linux job: the plan's diff-gated alternative is
+    # brittle (detecting "public Rust API changed" reliably is the hard part),
+    # and the check is cheap enough to run on every PR.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
+        with:
+          toolchain: "1.96.0"
+      - uses: taiki-e/install-action@288e746965032cfcc232e09af2daf5f23c14d780 # v2.86.1
+        with:
+          tool: cargo-semver-checks@0.50.0
+      # Compares the working tree against the latest version published on
+      # crates.io (termproof 0.3.2 today). Fails on any breaking change to a
+      # public API — under 0.x that is any change the pre-1.0 convention
+      # would call a minor bump (docs/publishing.md).
+      - name: cargo semver-checks check-release
+        run: cargo semver-checks check-release -p termproof
+
+  package:
+    name: cargo package (termproof tarball + contents)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
+        with:
+          toolchain: "1.96.0"
+      # `cargo package` verifies the tarball compiles from itself; the script
+      # then asserts what is and is not in it, so the package cannot drift
+      # from the publishing contract in docs/publishing.md.
+      - name: cargo package -p termproof
+        run: cargo package -p termproof
+      - name: Verify tarball contents
+        run: .github/scripts/verify-package-contents.sh

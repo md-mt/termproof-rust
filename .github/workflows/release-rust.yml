@@ -69,8 +69,8 @@ jobs:
             archive: termproof-macos-arm64.tar.gz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
         with:
           toolchain: "1.96.0"
           targets: ${{ matrix.target }}
@@ -95,11 +95,47 @@ jobs:
           ( cd dist && shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256" )
           cat "dist/$ARCHIVE.sha256"
 
-      - uses: actions/attest-build-provenance@v2
+      # Smoke-test before anything leaves the job: the checksum must verify,
+      # the archive must extract to a runnable binary, and that binary must
+      # report exactly the version this release claims (the workspace version
+      # at the built ref). A release archive that fails any of the three is
+      # better caught here than by whoever downloads it.
+      - name: Smoke-test the archive
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "termproof") | .version')"
+          .github/scripts/verify-release-archive.sh "dist/$ARCHIVE" "$VERSION"
+
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        id: attest
         with:
           subject-path: dist/${{ matrix.archive }}
 
-      - uses: actions/upload-artifact@v4
+      # The attestation exists to answer "which workflow, on which ref, built
+      # this archive" — an answer only as good as the subject it names. Verify
+      # the recorded subject digest is this exact archive's sha256, so a
+      # packaging bug that swapped the subject path cannot produce a green
+      # attestation for the wrong file.
+      #
+      # The bundle file is a Sigstore DSSE envelope: the in-toto statement
+      # (with the subject list) is the base64 `payload` of `dsseEnvelope`,
+      # not a top-level field. jq's `@base64d` decodes in-process, so this
+      # does not depend on a platform `base64` binary.
+      - name: Verify the attestation subject is the archive
+        env:
+          ARCHIVE: ${{ matrix.archive }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          DIGEST="$(shasum -a 256 "dist/$ARCHIVE" | awk '{print $1}')"
+          SUBJECT="$(jq -r '.dsseEnvelope.payload | @base64d | fromjson | .subject[0].digest.sha256' "$BUNDLE")"
+          if [ "$DIGEST" != "$SUBJECT" ]; then
+            echo "::error::attestation subject sha256 '$SUBJECT' does not match archive '$DIGEST'"
+            exit 1
+          fi
+          echo "attestation subject matches the archive ($DIGEST)"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.archive }}
           path: dist/${{ matrix.archive }}*
@@ -118,7 +154,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true

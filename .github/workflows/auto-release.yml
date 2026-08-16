@@ -118,10 +118,10 @@ jobs:
     steps:
       # Full history and tags: the decision is a range between the last release
       # tag and HEAD, and neither exists in a shallow clone.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
         with:
           toolchain: "1.96.0"
 
@@ -178,7 +178,7 @@ jobs:
           fi
           echo "RELEASE_TOKEN is present"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.decide.outputs.release == 'true'
         with:
           name: release-decision
@@ -195,8 +195,8 @@ jobs:
     if: needs.decide.outputs.release == 'true' && !inputs.dry_run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
         with:
           toolchain: "1.96.0"
           components: rustfmt, clippy
@@ -227,16 +227,16 @@ jobs:
       # push and the release will not start release-rust.yml and
       # publish-crates.yml. checkout persists this token, so the later
       # `git push` calls use it without naming it again.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: main
           token: ${{ secrets.RELEASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
         with:
           toolchain: "1.96.0"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-decision
 
