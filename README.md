@@ -143,6 +143,8 @@ inventory, the known divergences, and what a run still cannot do.
   error, tracing, dependency and feature policy
 - [Publishing](docs/publishing.md) — the crates.io publish set, tag format,
   version-bump rule and pre-release checklist
+- [Repository governance](docs/governance.md) — GitHub metadata, vulnerability
+  settings, merge policy, required checks, the `main` ruleset and audit procedure
 - [Reimplementation spec](docs/rust-reimplementation-spec.md) — design
   rationale, compatibility contract and parity gates
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Support](SUPPORT.md)
