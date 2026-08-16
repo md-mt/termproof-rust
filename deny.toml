@@ -22,7 +22,10 @@ ignore = []
 [licenses]
 # The allowlist is the union of what the graph legitimately uses, read from
 # `cargo metadata` with --all-features so a feature-gated dependency cannot
-# slip in unseen. Everything else is denied by default.
+# slip in unseen. Everything else is denied by default. An allowance that no
+# live dependency uses anymore is removed, not kept for luck: `cargo deny
+# check` warns on unused allowances, and the allowlist is meant to equal the
+# live graph plus deliberate pre-approvals (none today).
 allow = [
     "MIT",
     "Apache-2.0",
@@ -30,32 +33,73 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "BSL-1.0",
-    "ISC",
     "MIT-0",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",
     "0BSD",
-    "CC0-1.0",
 ]
 
 [bans]
-# Multiple versions are warned, not denied, because the graph deliberately
-# carries a small number of documented duplicates:
-# - unicode-width 0.1.14 (via `avt`) beside 0.2.2 (our floor, tied to
-#   `vt100`) — see Cargo.toml and crates/termproof/src/terminal/attributed.rs.
-#   The 0.1.14 copy cannot be removed while `avt` is in the graph, so this is
-#   a permanent exception, not a thing to fix.
-# - vte 0.14.1 (via `strip-ansi-escapes`, itself from `quick-junit`) beside
-#   0.15.0 (via `vt100`). Incidental: both come from transitive dependencies
-#   and neither pins the other; a future bump of either side may collapse it.
-# New duplicates should be collapsed, not added; a warning that becomes a
-# permanent fixture should be escalated to the maintainers.
-multiple-versions = "warn"
+# Multiple versions are denied — a duplicate that is not explicitly reviewed
+# and skipped here fails the check. The graph deliberately carries a small
+# number of documented duplicates; each one is listed in `skip` with its
+# rationale, so a NEW duplicate (one not reviewed) cannot land silently.
+multiple-versions = "deny"
 wildcards = "deny"
 highlight = "all"
 deny = []
-skip = []
+
+# Reviewed skips for the current duplicates, one per crate. Each entry names
+# the version that cannot be removed while the listed upstream dependency is
+# in the graph; the surviving version is what the workspace pins or what the
+# rest of the tree resolves. A skip is justified only when the dependency
+# tree proves the old copy is transitive and immovable — collapsing it would
+# require an upstream major bump this crate does not control.
+#
+# bitflags 1.3.2 — via `portable-pty 0.9.0` (our real-tty dependency,
+# RUST-006). portable-pty still builds on bitflags 1.x; everything else in
+# the graph (nix, rustix, png/image, tower-http/reqwest, redox_syscall)
+# already uses 2.13.1. Immovable until portable-pty drops bitflags 1.x.
+skip = [
+    { name = "bitflags", version = "=1.3.2", reason = "portable-pty 0.9.0 pins bitflags 1.x (filedescriptor/PTY path); the rest of the tree is on 2.13.1. Collapsing requires a portable-pty major bump." },
+    # hashbrown 0.12.3 — via `indexmap 1.9.3` from `schemars 0.8.22` (our
+    # source-to-schema generator). schemars 0.8 pins indexmap 1.x, which
+    # pins hashbrown 0.12; quick-junit/serde_yaml bring indexmap 2.14.0 /
+    # hashbrown 0.17.1. Immovable while schemars 0.8 is the generator.
+    { name = "hashbrown", version = "=0.12.3", reason = "schemars 0.8.22 -> indexmap 1.9.3 -> hashbrown 0.12; modern indexmap 2.14.0 (quick-junit, serde_yaml) uses 0.17. Collapsing requires a schemars major bump." },
+    # indexmap 1.9.3 — the schemars 0.8 pair of the hashbrown entry above.
+    # schemars 0.8.22 depends on indexmap 1.x for preserve_order; the rest of
+    # the graph is on 2.14.0. Immovable while schemars 0.8 is the generator.
+    { name = "indexmap", version = "=1.9.3", reason = "schemars 0.8.22 depends on indexmap 1.x (preserve_order); quick-junit and serde_yaml use 2.14.0. Collapsing requires a schemars major bump." },
+    # syn 2.0.119 — the derive stack still on syn 2: schemars_derive 0.8.22,
+    # serde_derive_internals, synstructure (yoke/zerofrom/zerovec ICU
+    # derives), thiserror-impl 1.0.69 (via filedescriptor -> portable-pty),
+    # wasm-bindgen-macro-support and windows-implement/interface. The modern
+    # derive stack (clap 4.6, serde 1.0.229, thiserror 2.0.19, displaydoc,
+    # ref-cast) is on syn 3.0.3. Two syn majors cannot be collapsed without
+    # upstream majors bumping their proc-macro deps.
+    { name = "syn", version = "=2.0.119", reason = "schemars 0.8 derive, ICU zerovec/yoke derives, thiserror-impl 1.x (portable-pty path) and wasm/windows tooling are still on syn 2; clap/serde/thiserror 2/displaydoc/ref-cast are on syn 3. Two upstream majors, not ours to collapse." },
+    # thiserror 1.0.69 — via `filedescriptor 0.8.3` from `portable-pty 0.9.0`.
+    # portable-pty's PTY layer still uses thiserror 1.x; the workspace floor
+    # and quick-junit are on 2.0.19. Immovable while portable-pty 0.9 is in
+    # the graph.
+    { name = "thiserror", version = "=1.0.69", reason = "portable-pty 0.9.0 -> filedescriptor 0.8.3 pins thiserror 1.x; workspace floor and quick-junit are on 2.0.19. Collapsing requires a portable-pty major bump." },
+    # thiserror-impl 1.0.69 — the proc-macro companion of thiserror 1.0.69
+    # (same portable-pty/filedescriptor path). Skipped with its parent.
+    { name = "thiserror-impl", version = "=1.0.69", reason = "proc-macro companion of thiserror 1.0.69, pulled by the same portable-pty -> filedescriptor path." },
+    # unicode-width 0.1.14 — via `avt 0.16.0` (evidence feature). Permanent
+    # exception: the workspace floor is 0.2.2, tied to vt100 0.16.2 which
+    # requires ^0.2.1 (see Cargo.toml and terminal::attributed.rs); avt
+    # carries its own 0.1.x copy and cannot be deduplicated by pinning.
+    { name = "unicode-width", version = "=0.1.14", reason = "avt 0.16.0 brings its own unicode-width 0.1.x; workspace floor is 0.2.2 tied to vt100's ^0.2.1 (correctness tests in terminal::attributed). Permanent, not a thing to fix." },
+    # vte 0.14.1 — via `strip-ansi-escapes 0.2.1` from `quick-junit 0.7.0`
+    # (junit feature). vt100 0.16.2 uses vte 0.15.0. Incidental: both sides
+    # are transitive, neither pins the other; a future bump of quick-junit or
+    # its strip-ansi-escapes may collapse it.
+    { name = "vte", version = "=0.14.1", reason = "quick-junit 0.7.0 -> strip-ansi-escapes 0.2.1 pins vte 0.14.1; vt100 0.16.2 uses 0.15.0. Incidental transitive split; a future upstream bump may collapse it." },
+]
+
 skip-tree = []
 
 [sources]

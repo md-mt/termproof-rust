@@ -127,12 +127,19 @@ and this document is updated.
   `main`, and weekly on a schedule (new RustSec advisories land without a code
   change; the weekly run re-reads the committed lockfile against a fresh
   database). Intentional exceptions live in `deny.toml` and must carry an
-  owner and, where meaningful, an expiry condition — see the file. Two
-  duplicate pairs exist in the graph today, both warned (not denied) by
-  policy: `unicode-width` 0.1.14 via `avt` beside the 0.2.2 floor
-  (a permanent exception, documented in `deny.toml`), and `vte` 0.14.1 via
-  `strip-ansi-escapes` beside 0.15.0 via `vt100` (incidental; it is what the
-  bump of `quick-junit` to 0.7 carries and is not worth a suppression).
+  owner and, where meaningful, an expiry condition — see the file. Duplicate
+  versions are *denied* (`bans.multiple-versions = "deny"`), so any duplicate
+  that has not been explicitly reviewed and skipped fails the gate. The
+  current graph carries eight reviewed skips, each with an inline rationale
+  grounded in the dependency tree: `bitflags` 1.3.2 and `thiserror`/`thiserror-impl`
+  1.0.69 (both pinned by `portable-pty` 0.9.0), `hashbrown` 0.12.3 and
+  `indexmap` 1.9.3 (both via `schemars` 0.8.22), `syn` 2.0.119 (the older
+  derive stack: schemars, ICU zerovec/yoke, thiserror-impl 1.x, wasm/windows
+  tooling), `unicode-width` 0.1.14 via `avt` beside the 0.2.2 floor (a
+  permanent exception, documented in `Cargo.toml` and `terminal::attributed`),
+  and `vte` 0.14.1 via `strip-ansi-escapes` beside 0.15.0 via `vt100`
+  (incidental; it is what the bump of `quick-junit` to 0.7 carries and is not
+  worth a suppression). A new duplicate is a gate failure, not a warning.
 - Supply-chain hygiene for the automation itself is part of the baseline:
   every third-party GitHub Action is pinned to an immutable commit SHA with a
   version comment (see §11), and `.github/dependabot.yml` opens weekly grouped
@@ -289,12 +296,16 @@ workspace README in the same change.
   reviewed against the dependency-floor test (§6) and the feature-powerset
   test (§7) in the same PR.
 - **cargo deny.** `deny.toml` is the workspace's dependency policy — licence
-  allowlist (deny-by-default), bans (duplicates warned, wildcards denied),
-  sources (crates.io only), and advisories (every vulnerability and unsound
-  advisory fails; `yanked` crates fail). Every intentional exception carries
-  an owner and, where meaningful, an expiry condition. Enforced by the
-  `Security` workflow on every PR and push, and weekly on a schedule so a
-  freshly published advisory is caught without waiting for a PR.
+  allowlist (deny-by-default, and equal to the live graph: an allowance no
+  dependency uses is removed, so `cargo deny check` reports no unused-license
+  warnings), bans (duplicates *denied* unless explicitly reviewed and skipped;
+  wildcards denied), sources (crates.io only), and advisories (every
+  vulnerability and unsound advisory fails; `yanked` crates fail). Every
+  intentional exception carries an owner and, where meaningful, an expiry
+  condition; the eight current duplicate skips each carry an inline reason
+  grounded in the dependency tree (§6). Enforced by the `Security` workflow on
+  every PR and push, and weekly on a schedule so a freshly published advisory
+  is caught without waiting for a PR.
 - **cargo semver-checks.** The `Security` workflow compares this crate's
   public API against the latest version published on crates.io on every PR
   (`cargo semver-checks check-release -p termproof`), and fails on a breaking
