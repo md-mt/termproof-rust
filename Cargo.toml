@@ -103,14 +103,14 @@ serde_yaml = "0.9"
 # consumer that does not need generation stops compiling `schemars` at all,
 # which answers "every consumer with a modern schemars carries two" without
 # breaking anyone's types.
-schemars = { version = "0.8", features = ["preserve_order"] }
+schemars = { version = "1.2", features = ["preserve_order"] }
 # Floor 0.32, tested at 0.32.0. 0.31 is the first version that will not build:
 # `ValidationErrorKind::OneOfMultipleValid` has no `context` field there, and
 # `pyschema` reads it to rank sub-errors the way Python's `best_match` does,
 # which FR-017 pins down. Below 0.31 more of the same API is missing —
 # `AnyOf`/`OneOfNotValid` contexts and `PrimitiveTypesBitMap::iter` at 0.29,
 # `Validator::iter_errors` as well at 0.24.
-jsonschema = { version = ">=0.32, <0.34" }
+jsonschema = { version = ">=0.32, <0.50" }
 # 0.9, not 0.8, because `ExitStatus::signal()` is 0.9's, and
 # `PtySession::exit_signal` is the published accessor that reads it.
 #
@@ -154,7 +154,7 @@ vt100 = "0.16"
 # `set_*` builders — is unchanged across the bump (verified by the suite).
 quick-junit = "0.7"
 image = { version = "0.25", default-features = false, features = ["png"] }
-sha2 = "0.10"
+sha2 = "0.11"
 unicode-normalization = "0.1"
 # Must track the major that `vt100` depends on. Our own width decisions and
 # vt100's cell layout have to come from one Unicode table, or the same byte
@@ -183,7 +183,7 @@ unicode-normalization = "0.1"
 unicode-width = "0.2"
 tempfile = "3.10"
 thiserror = "2.0"
-avt = "0.16"
+avt = "0.18"
 chrono = "0.4"
 globset = "0.4"
 clap = { version = "4.5", features = ["derive"] }
