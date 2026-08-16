@@ -55,7 +55,7 @@
 # font is not an error — it is a silently blank panel. fonts-liberation2
 # supplies Liberation Mono, matching the second entry exactly, for about 1 MB.
 
-FROM rust:1.96.0-slim-bookworm@sha256:4732ca96fd086cb9be682050c3f0176288eebaac2b80aa2bcefccfaf198e1950 AS builder
+FROM rust:1.97.1-slim-bookworm@sha256:2775a09d208ff0d7c1f50490c45b62db929e87ba1dcbc3f2132ac71a704bcdd3 AS builder
 
 WORKDIR /src
 
