@@ -13,6 +13,22 @@
 # failed partway, re-run this workflow from the release; the publish step is
 # idempotent and will skip what already landed.
 #
+# ## Why the upload is its own job
+#
+# The upload runs in the `crates-io` GitHub environment. Entering an
+# environment is what creates a deployment record, and — the day someone adds
+# a reviewer or a wait timer to it — what makes a run pause for approval.
+# Neither should happen on a pull request or a hand-triggered rehearsal, so the
+# dry run cannot share a job with the upload: a job-level `environment:` has no
+# `if:` of its own and would apply to every event this workflow accepts. Two
+# jobs, each guarded on `github.event_name`, is the only shape where the
+# environment covers exactly the path that publishes.
+#
+# The registry token stays a *repository* secret. Repository secrets are
+# visible to a job targeting an environment, so `secrets.CARGO_REGISTRY_TOKEN`
+# resolves here exactly as it did before — an environment adds a place a secret
+# of the same name could be defined, it does not move the one that exists.
+#
 # See docs/publishing.md.
 name: Publish (crates.io)
 
@@ -97,9 +113,15 @@ jobs:
       - name: build
         run: cargo build --workspace --release
 
-  publish:
-    name: ${{ github.event_name == 'release' && 'Publish' || 'Dry run' }}
+  # Verifies every publishable package by building it from its own tarball,
+  # with the not-yet-published ones overlaid in a temporary local registry.
+  # `--workspace` skips `publish = false` crates on its own. This is what runs
+  # on pull requests, so the workflow is exercised before a release depends on
+  # it. It uploads nothing, so it takes no token and enters no environment.
+  dry-run:
+    name: Dry run
     needs: [plan, gate]
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,17 +129,25 @@ jobs:
         with:
           toolchain: "1.96.0"
 
-      # Verifies every publishable package by building it from its own tarball,
-      # with the not-yet-published ones overlaid in a temporary local registry.
-      # `--workspace` skips `publish = false` crates on its own. This is what
-      # runs on pull requests, so the workflow is exercised before a release
-      # depends on it.
       - name: Dry run
-        if: github.event_name != 'release'
         run: cargo publish --dry-run --workspace
 
+  # The only job in this repository that uploads to a registry, and the only
+  # one in an environment. See the header for why it is not the dry run's `if:`
+  # on a shared job.
+  publish:
+    name: Publish
+    needs: [plan, gate]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master (2026-08-05)
+        with:
+          toolchain: "1.96.0"
+
       - name: Publish
-        if: github.event_name == 'release'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           ORDER: ${{ needs.plan.outputs.order }}

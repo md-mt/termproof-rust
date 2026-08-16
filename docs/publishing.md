@@ -93,6 +93,26 @@ hand-triggered into publishing by mistake. Use dispatch to rehearse.
 The workflow also runs on every pull request, as a dry run, so it is exercised
 before a release depends on it.
 
+### The `crates-io` environment
+
+Step 4 — the upload, and only the upload — runs in the `crates-io` GitHub
+environment. Today that environment carries no protection rules, so it changes
+nothing about how a release runs; what it buys is a place to put one. Adding a
+required reviewer or a wait timer there makes every future upload pause for it,
+with no workflow edit, and every upload leaves a deployment record on the
+repository's environment page.
+
+Because entering an environment is what creates that record, the upload is a
+separate job from the dry run rather than a second step inside one — a
+job-level `environment:` applies to every event the workflow accepts, and a
+pull request has no business creating deployments or waiting for approval.
+Both jobs are guarded on `github.event_name`, so exactly one of them runs.
+
+The token is unaffected. `CARGO_REGISTRY_TOKEN` remains a repository secret and
+is referenced the same way; repository secrets are visible to a job targeting
+an environment. An environment only adds a scope where a secret of the same
+name *could* be defined and would then take precedence — none is.
+
 ### Retrying a partial release
 
 Re-run the workflow from the release. The publish step is idempotent: it asks
