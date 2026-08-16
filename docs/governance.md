@@ -85,8 +85,12 @@ stable job names from the merged workflows. Renaming a job silently un-gates
 the ruleset; `security.yml` already documents that its job names are stable for
 this reason, and this list is the contract.
 
-Every pull request runs eight gate checks across three workflows
-(verified on merged PR #41 and on `main` at `e6efcb5`):
+Every pull request runs eight gate checks across three workflows. The five
+`Rust`/`Security` checks also run on `main` (verified at `e6efcb5`); the three
+`Publish (crates.io)` jobs run only on pull requests — `publish-crates.yml`
+triggers on `pull_request`, `workflow_dispatch`, and `release`, never on a
+push to `main` — so those three are verified on PR heads, not on `main`
+(audit commands in section 8):
 
 | Check name (exact) | Workflow | Job |
 |---|---|---|
@@ -112,7 +116,21 @@ PR, or the ruleset will silently stop enforcing that check.
 One ruleset, name **`main`**, enforcement **active**, targeting branch `main`:
 
 - **Require pull requests** — direct pushes rejected.
-- **Required approving reviews: 1**.
+- **Required approving reviews: 0 — the enforceable floor.** GitHub counts a
+  required review only from a reviewer with write permission (or a designated
+  code owner) who is not the PR author. Today the only write-capable account
+  is the maintainer `@md-mt`, which authors every PR, and no second eligible
+  reviewer exists (verified 2026-08-16: the review/audit account `@mw-ding`
+  has no push access). A count of one would make every routine
+  `@md-mt`-authored PR unmergeable without the emergency bypass, which
+  section 7 reserves for incidents. The count is therefore **zero**: the
+  ruleset still requires a PR, all eight checks, and up-to-date branches, and
+  blocks force pushes; review stays social (the PR template asks for review)
+  until a second eligible reviewer is established. Raising this count is
+  gated on the promotion criteria below.
+- **Code-owner review: not required** — `require_code_owner_review` stays
+  off. With `CODEOWNERS = * @md-mt` and the sole code owner authoring the
+  PRs, requiring code-owner review would reproduce the same lockout.
 - **Dismiss stale approvals** when new commits are pushed.
 - **Require conversation resolution** — a resolved thread must stay resolved.
 - **Require status checks**: the eight names in section 5.
@@ -125,9 +143,18 @@ One ruleset, name **`main`**, enforcement **active**, targeting branch `main`:
   administrators" toggle, so a future admin added to the repo does not inherit
   an unchecked path around the ruleset.
 - **Least privilege**: nothing else is exempted. `CODEOWNERS` remains
-  `* @md-mt`, and the required-review count is one because the code-owner
-  review and the ruleset review are the same actor in a one-maintainer
-  project.
+  `* @md-mt` as the ownership signal; because the sole code owner authors the
+  PRs, the ruleset enforces the gate structurally (PR + checks + up-to-date)
+  and keeps code-owner review off, so no routine path depends on a bypass.
+
+**Promotion criteria.** The review count is raised from zero to **one** only
+when a second eligible reviewer exists — a collaborator granted write
+permission (or designated code owner) who is not the PR author, or a
+non-`@md-mt` authoring path (a bot/CI account opening PRs) that lets
+`@md-mt` approve as the code owner. Until one of those is real, a count of
+one stays out of the ruleset: it would lock every routine `@md-mt`-authored
+PR onto the emergency bypass, which section 7 forbids. The settings task
+records which reviewer was added and re-runs the audit when it promotes.
 
 ## 7. Emergency bypass
 
@@ -176,8 +203,20 @@ gh api -i repos/md-mt/termproof-rust/vulnerability-alerts
 gh api -i repos/md-mt/termproof-rust/automated-security-fixes
 gh api repos/md-mt/termproof-rust/dependabot/alerts
 
-# Required checks on the current head of main
+# Baseline CI health on the current head of main — the five Rust/Security
+# gate checks (plus Dependabot config checks). The Publish jobs never run on
+# main, so this command alone cannot verify the full required-check contract.
 gh api repos/md-mt/termproof-rust/commits/main/check-runs --jq '.check_runs[].name'
+
+# Required PR gate checks — audit from a PR head, where all eight run.
+# Pick any open or recent PR (44 in the baseline, or the newest merged one):
+gh pr checks 44 --repo md-mt/termproof-rust --json name,state,workflow
+# or directly against a PR head commit:
+gh api repos/md-mt/termproof-rust/commits/<pr-head-sha>/check-runs --jq '.check_runs[].name'
+
+# After the ruleset exists, verify the eight configured contexts from the
+# ruleset JSON itself (the settings-change task records the ruleset id):
+gh api repos/md-mt/termproof-rust/rulesets --jq '.[] | select(.name == "main") | .rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'
 
 # Community health
 gh api repos/md-mt/termproof-rust/community/profile --jq .health_percentage
@@ -186,6 +225,8 @@ gh api repos/md-mt/termproof-rust/community/profile --jq .health_percentage
 Expected after the settings change: homepage `https://docs.rs/termproof`;
 topics present; vulnerability/Dependabot alerts enabled; private reporting
 enabled; squash-only + delete-branch-on-merge; one active `main` ruleset with
-the eight required checks; `main` refusing direct pushes, force pushes and
-deletion; and an explicit `@md-mt` bypass. Any deviation from section 1–6 is a
-finding to fix or a deliberate change to record here first.
+the eight required checks and a required-review count of zero (until a second
+eligible reviewer exists — see promotion criteria in section 6); `main`
+refusing direct pushes, force pushes and deletion; and an explicit `@md-mt`
+bypass. Any deviation from section 1–6 is a finding to fix or a deliberate
+change to record here first.
